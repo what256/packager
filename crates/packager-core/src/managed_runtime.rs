@@ -531,6 +531,17 @@ fn configure_podman_machine_init(command: &mut Command, cpus: &str) {
     ]);
 }
 
+#[cfg(target_os = "windows")]
+fn wsl_command() -> Command {
+    // Windows searches System32 before PATH for wsl.exe. Debug builds may point
+    // at the native-CI lifecycle fixture; release builds always use system WSL.
+    #[cfg(debug_assertions)]
+    if let Some(path) = std::env::var_os("PACKAGER_TEST_WSL_PATH") {
+        return Command::new(path);
+    }
+    Command::new("wsl.exe")
+}
+
 fn docker_version(paths: &RuntimePaths) -> Option<String> {
     if !paths.installed() {
         return None;
@@ -612,7 +623,7 @@ pub fn start(engine: &Engine) -> Result<ManagedRuntimeStatus, String> {
     #[cfg(target_os = "windows")]
     {
         let wsl = checked_output(
-            Command::new("wsl.exe").arg("--status").output(),
+            wsl_command().arg("--status").output(),
             "check WSL2",
         )
         .map_err(|error| {

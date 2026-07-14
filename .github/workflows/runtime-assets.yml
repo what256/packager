@@ -89,12 +89,22 @@ jobs:
           $runtime = Join-Path $env:PACKAGER_DATA_DIR "runtime"
           $mock = Join-Path $env:RUNNER_TEMP "packager-runtime-mock.exe"
           $mockBin = Join-Path $env:RUNNER_TEMP "packager-runtime-mock-bin"
+          Remove-Item -Recurse -Force $env:PACKAGER_RUNTIME_MOCK_DIR, $mockBin -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force $env:PACKAGER_RUNTIME_MOCK_DIR, $mockBin | Out-Null
           rustc --edition 2021 tests/fixtures/windows_runtime_mock.rs -o $mock
           Copy-Item -Force $mock (Join-Path $runtime "bin/podman.exe")
           Copy-Item -Force $mock (Join-Path $mockBin "wsl.exe")
-          $env:PATH = "$mockBin;$env:PATH"
+          $managedPodman = Join-Path $runtime "bin/podman.exe"
+          if ((Get-FileHash $mock).Hash -ne (Get-FileHash $managedPodman).Hash) {
+            throw "The managed Podman executable was not replaced by the lifecycle fixture"
+          }
           $env:PACKAGER_RUNTIME_EXPECT_ROOT = $runtime
+          $env:PACKAGER_TEST_WSL_PATH = Join-Path $mockBin "wsl.exe"
+
+          $initial = (& $binary --json runtime status | Out-String) | ConvertFrom-Json
+          if (-not $initial.installed -or $initial.running -or $initial.state -ne "stopped") {
+            throw "The lifecycle fixture did not start cleanly: $($initial | ConvertTo-Json -Compress)"
+          }
 
           $env:PACKAGER_RUNTIME_MOCK_WSL_DISABLED = "1"
           $disabledOutput = (& $binary runtime start 2>&1 | Out-String)
