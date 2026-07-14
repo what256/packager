@@ -4,7 +4,7 @@ Packager turns containerized, self-hosted software into ordinary local apps on m
 
 The desktop application and headless CLI are two clients of the same Rust engine. Their internal executable names are kept distinct so workspace builds cannot overwrite one another. Docker Desktop is not required.
 
-> Status: cross-platform alpha. macOS is runtime-tested locally. Windows x64 and ARM64 pass the full workspace checks and managed-tool installation smoke tests on native GitHub runners. Starting the WSL2 machine and running a real packaged workload still need end-to-end validation on Windows hardware before the first stable release.
+> Status: cross-platform alpha. macOS is runtime-tested locally. Windows x64 and ARM64 pass the full workspace checks, real managed-tool installation smoke tests, and a native CLI lifecycle contract covering WSL detection plus machine create/start/status/stop/restart. Starting an actual WSL2 machine and running a real packaged workload still need end-to-end validation on Windows hardware before the first stable release.
 
 ## Install Packager
 
@@ -114,6 +114,7 @@ On macOS, Packager does not activate or modify the user's global Docker context.
 - macOS Apple Silicon/Intel and Windows ARM64/x64 build targets
 - Managed runtime with no Docker Desktop dependency
 - Monthly and change-triggered verification of the real pinned Podman/Compose downloads on native Windows x64 and ARM64 runners
+- Native Windows x64/ARM64 lifecycle tests for WSL2 prerequisite handling and private Podman machine orchestration
 - Compose folder, image-reference, and public-GitHub package builder
 - Built-in Open Notebook package
 - Dynamic loopback ports with collision repair

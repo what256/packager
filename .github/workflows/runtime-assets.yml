@@ -6,6 +6,7 @@ on:
     paths:
       - crates/packager-core/src/managed_runtime.rs
       - crates/packager-core/Cargo.toml
+      - tests/fixtures/windows_runtime_mock.rs
       - Cargo.lock
       - .github/workflows/runtime-assets.yml
   workflow_dispatch:
@@ -76,4 +77,70 @@ jobs:
           $partialDownloads = @(Get-ChildItem $runtime -Recurse -Filter "*.part-*" -ErrorAction SilentlyContinue)
           if ($partialDownloads.Count -ne 0) {
             throw "Managed runtime left partial downloads behind"
+          }
+      - name: Exercise the private Windows runtime lifecycle contract
+        shell: pwsh
+        env:
+          PACKAGER_DATA_DIR: ${{ runner.temp }}\packager-data
+          PACKAGER_CACHE_DIR: ${{ runner.temp }}\packager-cache
+          PACKAGER_RUNTIME_MOCK_DIR: ${{ runner.temp }}\packager-runtime-mock
+        run: |
+          $binary = "target/${{ matrix.target }}/debug/packager.exe"
+          $runtime = Join-Path $env:PACKAGER_DATA_DIR "runtime"
+          $mock = Join-Path $env:RUNNER_TEMP "packager-runtime-mock.exe"
+          $mockBin = Join-Path $env:RUNNER_TEMP "packager-runtime-mock-bin"
+          New-Item -ItemType Directory -Force $env:PACKAGER_RUNTIME_MOCK_DIR, $mockBin | Out-Null
+          rustc --edition 2021 tests/fixtures/windows_runtime_mock.rs -o $mock
+          Copy-Item -Force $mock (Join-Path $runtime "bin/podman.exe")
+          Copy-Item -Force $mock (Join-Path $mockBin "wsl.exe")
+          $env:PATH = "$mockBin;$env:PATH"
+          $env:PACKAGER_RUNTIME_EXPECT_ROOT = $runtime
+
+          $env:PACKAGER_RUNTIME_MOCK_WSL_DISABLED = "1"
+          $disabledOutput = (& $binary runtime start 2>&1 | Out-String)
+          $disabledExit = $LASTEXITCODE
+          Remove-Item Env:\PACKAGER_RUNTIME_MOCK_WSL_DISABLED
+          if ($disabledExit -eq 0 -or $disabledOutput -notmatch "wsl --install") {
+            throw "Missing actionable WSL2 prerequisite failure: $disabledOutput"
+          }
+
+          $started = (& $binary --json runtime start | Out-String) | ConvertFrom-Json
+          if (-not $started.installed -or -not $started.running -or $started.state -ne "running") {
+            throw "Unexpected started runtime status: $($started | ConvertTo-Json -Compress)"
+          }
+          if ($started.version -notmatch "Podman 5\.8\.2 \(WSL2\)") {
+            throw "Unexpected managed runtime version: $($started.version)"
+          }
+
+          $idempotentStart = (& $binary --json runtime start | Out-String) | ConvertFrom-Json
+          if (-not $idempotentStart.running) {
+            throw "Starting an already-running runtime was not idempotent"
+          }
+
+          $stopped = (& $binary --json runtime stop | Out-String) | ConvertFrom-Json
+          if ($stopped.running -or $stopped.state -ne "stopped") {
+            throw "Unexpected stopped runtime status: $($stopped | ConvertTo-Json -Compress)"
+          }
+
+          $restarted = (& $binary --json runtime start | Out-String) | ConvertFrom-Json
+          if (-not $restarted.running) {
+            throw "The existing managed machine did not restart"
+          }
+          $final = (& $binary --json runtime stop | Out-String) | ConvertFrom-Json
+          if ($final.running -or $final.state -ne "stopped") {
+            throw "The managed runtime did not finish stopped"
+          }
+
+          $commands = @(Get-Content (Join-Path $env:PACKAGER_RUNTIME_MOCK_DIR "commands.log"))
+          $initializations = @($commands | Where-Object {
+            $_ -match '^podman machine init --cpus [2-4] --memory 6144 --disk-size 60 packager-runtime$'
+          })
+          $starts = @($commands | Where-Object { $_ -eq "podman machine start packager-runtime" })
+          $stops = @($commands | Where-Object { $_ -eq "podman machine stop packager-runtime" })
+          $wslChecks = @($commands | Where-Object { $_ -eq "wsl --status" })
+          if ($initializations.Count -ne 1 -or $starts.Count -ne 2 -or $stops.Count -ne 2) {
+            throw "Unexpected managed-machine lifecycle: $($commands -join '; ')"
+          }
+          if ($wslChecks.Count -ne 3) {
+            throw "Packager did not check WSL2 before each real start attempt"
           }
