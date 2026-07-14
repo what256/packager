@@ -12,13 +12,23 @@ Choose whichever interface fits your workflow.
 
 ### Credential-free development previews
 
-Maintainers can run the [Preview artifacts workflow](https://github.com/what256/packager/actions/workflows/preview.yml) without Apple, Windows, or npm credentials. It builds native desktop bundles, standalone CLIs, and installable npm `.tgz` files for all four supported platform/architecture combinations. Download the results from the workflow run; they expire after 14 days.
+Download the permanent [Packager 0.1.0 Development Preview](https://github.com/what256/packager/releases/tag/preview-v0.1.0). It includes macOS DMGs, Windows MSI/NSIS installers, standalone CLIs, five local npm `.tgz` packages, and `SHA256SUMS` for all four supported platform/architecture combinations.
 
-Preview desktop artifacts are deliberately labeled `UNSIGNED` and include `PREVIEW-NOTICE.txt`. macOS Gatekeeper and Windows SmartScreen warnings are expected because these builds are neither notarized nor operating-system signed. They are for development testing only, are not published to npm or GitHub Releases, and do not replace the signed release process below.
+For a newer source revision, maintainers can run the [Preview artifacts workflow](https://github.com/what256/packager/actions/workflows/preview.yml) without Apple, Windows, or npm credentials. Workflow artifacts expire after 14 days; verified builds can be promoted to a permanent GitHub prerelease.
+
+Preview desktop artifacts include `PREVIEW-NOTICE.txt`. macOS builds are completely ad-hoc signed but not Developer ID signed or Apple-notarized; Windows builds are not Authenticode signed. Gatekeeper and SmartScreen warnings are therefore expected. Preview releases are excluded from the stable automatic-update channel and do not replace the signed release process below.
+
+The npm tarballs are not published to the npm registry. Download the launcher and the one native package matching your computer, then install both local files together. For example:
+
+```bash
+npm install --global \
+  ./packager-cli-darwin-arm64-0.1.0-preview.3.tgz \
+  ./packager-cli-0.1.0-preview.3.tgz
+```
 
 ### Desktop app
 
-Download the signed installer from GitHub Releases:
+Official releases provide operating-system-signed installers through GitHub Releases:
 
 - macOS: open the `.dmg` and drag Packager into Applications.
 - Windows: run the signed NSIS `.exe` or MSI installer.
