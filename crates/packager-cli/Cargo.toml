@@ -1,0 +1,17 @@
+[package]
+name = "packager-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "CLI for packaging and running self-hosted applications"
+
+[[bin]]
+name = "packager"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive", "env"] }
+packager-core = { path = "../packager-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

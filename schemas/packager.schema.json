@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://packager.dev/schema/v1/packager.schema.json",
+  "title": "Packager recipe",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "name", "version", "description", "category", "homepage", "license", "runtime", "ui"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "version": { "type": "string", "minLength": 1 },
+    "description": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "category": { "type": "string", "minLength": 1, "maxLength": 40 },
+    "homepage": { "type": "string", "format": "uri", "pattern": "^https://" },
+    "license": { "type": "string", "minLength": 1 },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "compose_file", "project_name"],
+      "properties": {
+        "kind": { "const": "compose" },
+        "compose_file": { "type": "string", "pattern": "^[^/\\\\]+\\.ya?ml$" },
+        "project_name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+        "ports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "container_port", "environment"],
+            "properties": {
+              "name": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+              "container_port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+              "environment": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" }
+            }
+          }
+        }
+      }
+    },
+    "ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "oneOf": [
+        { "required": ["url"], "not": { "required": ["port"] } },
+        { "required": ["port"], "not": { "required": ["url"] } }
+      ],
+      "properties": {
+        "url": { "type": "string", "pattern": "^http://(127\\.0\\.0\\.1|localhost):[0-9]+" },
+        "port": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+        "path": { "type": "string", "pattern": "^/[^/].*|^/$" },
+        "width": { "type": "number", "minimum": 720 },
+        "height": { "type": "number", "minimum": 520 }
+      }
+    },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "memory_mb": { "type": "integer", "minimum": 0 },
+        "disk_mb": { "type": "integer", "minimum": 0 },
+        "architectures": {
+          "type": "array",
+          "items": { "enum": ["arm64", "x86_64"] },
+          "uniqueItems": true
+        }
+      }
+    },
+    "updates": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "strategy": { "const": "compose-pull" },
+        "interval_hours": { "type": "integer", "minimum": 1, "maximum": 720 }
+      }
+    },
+    "secrets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key"],
+        "properties": {
+          "key": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+          "generate": { "const": "uuid" }
+        }
+      }
+    }
+  }
+}

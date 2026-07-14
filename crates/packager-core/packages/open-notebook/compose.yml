@@ -1,0 +1,26 @@
+services:
+  surrealdb:
+    image: surrealdb/surrealdb:v2
+    command: start --log info --user root --pass root rocksdb:/mydata/mydatabase.db
+    user: root
+    volumes:
+      - ${PACKAGER_DATA_DIR:?PACKAGER_DATA_DIR is required}/surreal:/mydata
+    restart: unless-stopped
+
+  open-notebook:
+    image: lfnovo/open_notebook:v1-latest
+    ports:
+      - "127.0.0.1:${PACKAGER_WEB_PORT:?PACKAGER_WEB_PORT is required}:8502"
+      - "127.0.0.1:${PACKAGER_API_PORT:?PACKAGER_API_PORT is required}:5055"
+    environment:
+      OPEN_NOTEBOOK_ENCRYPTION_KEY: ${OPEN_NOTEBOOK_ENCRYPTION_KEY:?OPEN_NOTEBOOK_ENCRYPTION_KEY is required}
+      SURREAL_URL: ws://surrealdb:8000/rpc
+      SURREAL_USER: root
+      SURREAL_PASSWORD: root
+      SURREAL_NAMESPACE: open_notebook
+      SURREAL_DATABASE: open_notebook
+    volumes:
+      - ${PACKAGER_DATA_DIR:?PACKAGER_DATA_DIR is required}/notebook:/app/data
+    depends_on:
+      - surrealdb
+    restart: unless-stopped

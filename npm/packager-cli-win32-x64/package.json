@@ -1,0 +1,9 @@
+{
+  "name": "packager-cli-win32-x64",
+  "version": "0.1.0",
+  "description": "Packager CLI native binary for Windows x64",
+  "license": "MIT",
+  "os": ["win32"],
+  "cpu": ["x64"],
+  "files": ["bin/packager.exe"]
+}

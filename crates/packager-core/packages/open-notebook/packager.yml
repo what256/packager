@@ -1,0 +1,36 @@
+schema_version: 1
+id: open-notebook
+name: Open Notebook
+version: 1.0.0
+description: A private, self-hosted research assistant for documents, notes, chat, and podcasts.
+category: Knowledge
+homepage: https://www.opennotebook.ai/
+license: MIT
+runtime:
+  kind: compose
+  compose_file: compose.yml
+  project_name: packager-open-notebook
+  ports:
+    - name: web
+      container_port: 8502
+      environment: PACKAGER_WEB_PORT
+    - name: api
+      container_port: 5055
+      environment: PACKAGER_API_PORT
+ui:
+  port: web
+  path: /
+  width: 1360
+  height: 860
+requirements:
+  memory_mb: 4096
+  disk_mb: 2048
+  architectures:
+    - arm64
+    - x86_64
+secrets:
+  - key: OPEN_NOTEBOOK_ENCRYPTION_KEY
+    generate: uuid
+updates:
+  strategy: compose-pull
+  interval_hours: 24

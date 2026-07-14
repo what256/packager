@@ -1,0 +1,9 @@
+{
+  "name": "packager-cli-darwin-arm64",
+  "version": "0.1.0",
+  "description": "Packager CLI native binary for macOS Apple Silicon",
+  "license": "MIT",
+  "os": ["darwin"],
+  "cpu": ["arm64"],
+  "files": ["bin/packager"]
+}

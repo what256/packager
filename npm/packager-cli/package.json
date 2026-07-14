@@ -1,0 +1,25 @@
+{
+  "name": "packager-cli",
+  "version": "0.1.0",
+  "description": "Install the native Packager CLI for macOS and Windows",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/what256/packager.git"
+  },
+  "bin": {
+    "packager": "bin/packager.js"
+  },
+  "files": [
+    "bin"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "optionalDependencies": {
+    "packager-cli-darwin-arm64": "0.1.0",
+    "packager-cli-darwin-x64": "0.1.0",
+    "packager-cli-win32-arm64": "0.1.0",
+    "packager-cli-win32-x64": "0.1.0"
+  }
+}
