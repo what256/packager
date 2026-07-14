@@ -191,12 +191,12 @@ Those updater keys do not sign the DMG, Windows installer, or npm package. Publi
 | `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Desktop automatic-update artifact signatures on macOS and Windows |
 | Six `APPLE_*`/`KEYCHAIN_PASSWORD` secrets | Developer ID signing and Apple notarization |
 | `WINDOWS_CERTIFICATE`, `WINDOWS_CERTIFICATE_PASSWORD` | Authenticode signing for Windows executables/MSI/NSIS |
-| `NPM_TOKEN` | Publish `packager-cli` and its four native packages |
+| `NPM_TOKEN` | Bootstrap the first publication of `packager-cli` and its four native packages; later releases can use npm trusted publishing |
 | `GITHUB_TOKEN` | Create the draft release and upload assets; supplied by GitHub Actions |
 
 Packager users do not need any publishing secret. Package application secrets are generated locally and live in the operating-system credential vault.
 
-`NPM_TOKEN` is an npm-account publishing credential, not an API-development credential. It is needed only for the first official registry publication; credential-free preview tarballs remain available through GitHub Actions. The Windows certificate may be added later without changing the application or CLI architecture.
+`NPM_TOKEN` is an npm-account publishing credential, not an API-development credential. It is needed only to bootstrap the first registry publication. The dedicated `Publish npm CLI` workflow can publish and verify the CLI independently of desktop signing. After the packages exist, configure each package's npm trusted publisher for GitHub user `what256`, repository `packager`, workflow `publish-npm.yml`, and the `npm publish` action; the workflow already grants OIDC permission and uses a compatible npm CLI. Credential-free preview tarballs remain available through GitHub Releases. The Windows certificate may be added later without changing the application or CLI architecture.
 
 ## Development
 

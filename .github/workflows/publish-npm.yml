@@ -1,0 +1,143 @@
+name: Publish npm CLI
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Source and npm version to publish
+        required: true
+        default: 0.1.0
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            platform: darwin-arm64
+            executable: packager
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+            platform: darwin-x64
+            executable: packager
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            platform: win32-x64
+            executable: packager.exe
+          - target: aarch64-pc-windows-msvc
+            runner: windows-11-arm
+            platform: win32-arm64
+            executable: packager.exe
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+      - run: node scripts/check-versions.mjs "${{ inputs.version }}"
+      - run: cargo build --locked --release -p packager-cli --target ${{ matrix.target }}
+      - name: Verify and stage native CLI
+        shell: bash
+        run: |
+          binary="target/${{ matrix.target }}/release/${{ matrix.executable }}"
+          test "$("$binary" --version)" = "packager ${{ inputs.version }}"
+          mkdir -p dist
+          cp "$binary" "dist/${{ matrix.executable }}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: npm-cli-${{ matrix.platform }}
+          path: dist/${{ matrix.executable }}
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: npm install --global npm@12.0.1
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: npm-cli-*
+          path: artifacts
+      - name: Stage native npm packages
+        run: |
+          node scripts/check-versions.mjs "${{ inputs.version }}"
+          node scripts/prepare-npm-release.mjs "${{ inputs.version }}" "$GITHUB_REPOSITORY"
+          install -Dm755 artifacts/npm-cli-darwin-arm64/packager npm/packager-cli-darwin-arm64/bin/packager
+          install -Dm755 artifacts/npm-cli-darwin-x64/packager npm/packager-cli-darwin-x64/bin/packager
+          install -Dm755 artifacts/npm-cli-win32-arm64/packager.exe npm/packager-cli-win32-arm64/bin/packager.exe
+          install -Dm755 artifacts/npm-cli-win32-x64/packager.exe npm/packager-cli-win32-x64/bin/packager.exe
+          node --check npm/packager-cli/bin/packager.js
+          for package in npm/packager-cli-darwin-arm64 npm/packager-cli-darwin-x64 npm/packager-cli-win32-arm64 npm/packager-cli-win32-x64 npm/packager-cli; do
+            npm pack --dry-run "./$package" >/dev/null
+          done
+      - name: Publish architecture packages, then launcher
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          publish_package() {
+            package_path="$1"
+            package_name=$(node -p "require('./${package_path}/package.json').name")
+            package_version=$(node -p "require('./${package_path}/package.json').version")
+            if npm view "${package_name}@${package_version}" version >/dev/null 2>&1; then
+              echo "${package_name}@${package_version} is already published; skipping."
+            else
+              npm publish --access public --provenance "./${package_path}"
+            fi
+          }
+
+          for package in npm/packager-cli-darwin-arm64 npm/packager-cli-darwin-x64 npm/packager-cli-win32-arm64 npm/packager-cli-win32-x64; do
+            publish_package "$package"
+          done
+          publish_package npm/packager-cli
+      - name: Verify registry metadata
+        run: |
+          for package in packager-cli-darwin-arm64 packager-cli-darwin-x64 packager-cli-win32-arm64 packager-cli-win32-x64 packager-cli; do
+            test "$(npm view "${package}@${{ inputs.version }}" version)" = "${{ inputs.version }}"
+            test "$(npm view "${package}@${{ inputs.version }}" repository.url)" = "git+https://github.com/${GITHUB_REPOSITORY}.git"
+          done
+
+  verify-install:
+    needs: publish
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+          - runner: macos-15-intel
+          - runner: windows-latest
+          - runner: windows-11-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: Install published CLI
+        shell: bash
+        run: npm install --global --no-audit --no-fund "packager-cli@${{ inputs.version }}"
+      - name: Verify published CLI
+        shell: bash
+        run: |
+          test "$(packager --version)" = "packager ${{ inputs.version }}"
+          packager --help >/dev/null

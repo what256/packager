@@ -169,20 +169,18 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
+      - run: npm install --global npm@12.0.1
       - uses: actions/download-artifact@v8
         with:
           pattern: cli-*
           path: artifacts
-      - name: Verify npm publishing secret
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: test -n "$NPM_TOKEN"
       - name: Stage npm packages and release manifests
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
@@ -196,10 +194,21 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          publish_package() {
+            package_path="$1"
+            package_name=$(node -p "require('./${package_path}/package.json').name")
+            package_version=$(node -p "require('./${package_path}/package.json').version")
+            if npm view "${package_name}@${package_version}" version >/dev/null 2>&1; then
+              echo "${package_name}@${package_version} is already published; skipping."
+            else
+              npm publish --access public --provenance "./${package_path}"
+            fi
+          }
+
           for package in npm/packager-cli-darwin-arm64 npm/packager-cli-darwin-x64 npm/packager-cli-win32-arm64 npm/packager-cli-win32-x64; do
-            npm publish --access public "./$package"
+            publish_package "$package"
           done
-          npm publish --access public ./npm/packager-cli
+          publish_package npm/packager-cli
       - name: Upload standalone CLI and package-manager manifests
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
