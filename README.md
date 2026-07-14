@@ -4,7 +4,7 @@ Packager turns containerized, self-hosted software into ordinary local apps on m
 
 The desktop application and headless CLI are two clients of the same Rust engine. Docker Desktop is not required.
 
-> Status: cross-platform alpha. macOS is runtime-tested locally. Windows x64 and ARM64 cross-check locally, and CI is configured to build/test them on native GitHub runners. The Windows runtime still needs end-to-end validation on Windows hardware before the first stable release.
+> Status: cross-platform alpha. macOS is runtime-tested locally. Windows x64 and ARM64 pass the full workspace checks on native GitHub runners. The Windows runtime still needs end-to-end validation on Windows hardware before the first stable release.
 
 ## Install Packager
 
