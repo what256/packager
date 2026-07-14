@@ -1,6 +1,6 @@
 {
   "name": "@what256/packager-darwin-arm64",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Packager CLI native binary for macOS Apple Silicon",
   "license": "MIT",
   "os": ["darwin"],

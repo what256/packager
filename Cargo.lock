@@ -2818,7 +2818,7 @@ dependencies = [
 
 [[package]]
 name = "packager"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "packager-core",
  "serde",
@@ -2835,7 +2835,7 @@ dependencies = [
 
 [[package]]
 name = "packager-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "packager-core",
@@ -2845,7 +2845,7 @@ dependencies = [
 
 [[package]]
 name = "packager-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "flate2",
  "keyring",
