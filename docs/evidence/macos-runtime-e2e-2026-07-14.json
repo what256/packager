@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "passed": true,
+  "startedAt": "2026-07-14T16:15:19Z",
+  "completedAt": "2026-07-14T16:16:41Z",
+  "hostArchitecture": "arm64",
+  "macosVersion": "26.5.1",
+  "packagerVersion": "packager 0.1.1",
+  "image": "docker.io/library/nginx:alpine",
+  "runtimeVersion": "Docker Engine 29.2.1",
+  "workloadUrl": "http://127.0.0.1:56045/",
+  "checks": [
+    "package-build-import",
+    "managed-runtime-install-start",
+    "compose-pull-up",
+    "macos-bind-data-persistence",
+    "loopback-http-readiness",
+    "container-logs",
+    "automatic-update-state",
+    "image-update-recreate",
+    "stop",
+    "destructive-uninstall"
+  ]
+}

@@ -6,6 +6,8 @@ The desktop application and headless CLI are two clients of the same Rust engine
 
 > Status: cross-platform alpha. macOS has a repeatable real-workload runtime gate. Windows x64 and ARM64 pass the full workspace checks, real managed-tool installation smoke tests, and a native CLI lifecycle contract covering WSL detection plus machine create/start/status/stop/restart. Starting an actual WSL2 machine and running a real packaged workload still need end-to-end validation on Windows hardware before the first stable release.
 
+Project records: [current status](docs/STATUS.md) · [maintainer guide](docs/MAINTAINER_GUIDE.md) · [release history](CHANGELOG.md) · [security policy](SECURITY.md)
+
 ## Install Packager
 
 Choose whichever interface fits your workflow.
@@ -106,7 +108,7 @@ Packager downloads only version-pinned assets with committed SHA-256 digests.
 | macOS 13+ | Colima 0.10.1, Lima 2.1.1, Docker CLI 29.4.3, Compose 5.1.4 | Apple virtualization support |
 | Windows 10 22H2+/11 | Podman 5.8.2 portable client, private Podman machine on WSL2, Compose 5.1.4 | WSL2 Windows feature |
 
-On Windows, Packager does not install Docker or Podman Desktop. It stores the portable tools and Podman configuration under Packager's application-data directory, and creates an OS-visible WSL2 machine named `packager-runtime`. If WSL2 is disabled, Packager explains that the user must run `wsl --install` once and restart if Windows requests it. That Windows feature change is the only step that may require administrator approval.
+On Windows, Packager does not install Docker or Podman Desktop. It stores the portable tools and Podman configuration under Packager's application-data directory, and creates an OS-visible WSL2 machine named `packager-runtime`. If WSL2 is disabled, Packager explains that the user must run `wsl --install` once and restart if Windows requests it. That Windows feature change is the only step that may require administrator approval. `packager runtime uninstall` removes the private WSL2 machine, its container storage, and Packager's portable runtime tools.
 
 On macOS, Packager does not activate or modify the user's global Docker context. Runtime tools, cache, and Docker configuration remain under Packager's Application Support directory. Colima and Lima VM state uses a short, per-installation directory under `~/.packager/r/` so Lima's Unix sockets remain below macOS's fixed path-length limit. `packager runtime uninstall` removes both locations and the private VM.
 
@@ -254,6 +256,8 @@ cargo check -p packager-core -p packager-cli --target x86_64-pc-windows-msvc
 The CI workflow runs the full workspace on GitHub's native macOS and Windows runners for ARM64 and x64. The signed desktop release workflow builds both desktop architectures on each OS. A separate credential-free `cli-v*` workflow builds four standalone CLIs and publishes a GitHub prerelease; that event advances the OIDC-only npm packages plus the repository's validated Homebrew and Scoop channels. An ordinary signed desktop release can advance the same CLI channels as well.
 
 ## Publishing
+
+The step-by-step operational and recovery runbook is in [`docs/MAINTAINER_GUIDE.md`](docs/MAINTAINER_GUIDE.md). It includes the safe release commands, account-protection rules, CI failure procedure, and weekly maintenance check.
 
 The development updater key was rotated in July 2026. Its ignored private key is `.tauri/packager.key`; the password is stored in the developer's macOS Keychain under service `dev.packager.release`, account `updater-key-password`.
 
