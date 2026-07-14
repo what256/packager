@@ -1,0 +1,226 @@
+name: Publish package-manager channels
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing GitHub release tag to validate
+        required: true
+        default: preview-v0.1.0
+        type: string
+      version:
+        description: Version embedded in that release's CLI filenames
+        required: true
+        default: 0.1.0
+        type: string
+      publish_channels:
+        description: Update Formula/ and bucket/ on main (stable v* releases only)
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: package-manager-channels
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+      publish: ${{ steps.release.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Resolve release and publication mode
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_PUBLISH: ${{ inputs.publish_channels }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = release ]; then
+            TAG="$RELEASE_TAG"
+            case "$TAG" in
+              v*) VERSION="${TAG#v}" ;;
+              *) echo "Stable release tags must start with v." >&2; exit 1 ;;
+            esac
+            PUBLISH=true
+          else
+            TAG="$INPUT_TAG"
+            VERSION="$INPUT_VERSION"
+            PUBLISH="$INPUT_PUBLISH"
+          fi
+
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release version: $VERSION" >&2
+            exit 1
+          fi
+          if [ "$PUBLISH" = true ]; then
+            case "$TAG" in
+              v*) ;;
+              *) echo "Only v* releases may update stable package-manager channels." >&2; exit 1 ;;
+            esac
+            test "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = false
+            test "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq .isPrerelease)" = false
+          fi
+
+          {
+            echo "tag=$TAG"
+            echo "version=$VERSION"
+            echo "publish=$PUBLISH"
+          } >> "$GITHUB_OUTPUT"
+      - name: Download standalone CLI archives
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.release.outputs.tag }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/packager-cli-assets"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/packager-cli-assets" \
+            --pattern "packager-cli-v${VERSION}-darwin-arm64.tar.gz" \
+            --pattern "packager-cli-v${VERSION}-darwin-x64.tar.gz" \
+            --pattern "packager-cli-v${VERSION}-win32-arm64.zip" \
+            --pattern "packager-cli-v${VERSION}-win32-x64.zip"
+      - name: Generate and validate channel manifests
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          node scripts/generate-package-manager-manifests.mjs \
+            "$GITHUB_REPOSITORY" "$VERSION" "$RUNNER_TEMP/packager-cli-assets" "$TAG"
+          ruby -c "$RUNNER_TEMP/packager-cli-assets/packager.rb"
+          jq -e \
+            '.version == env.VERSION and .architecture["64bit"].url and .architecture.arm64.url and .bin == "packager.exe"' \
+            "$RUNNER_TEMP/packager-cli-assets/packager.json" >/dev/null
+          test "$(wc -l < "$RUNNER_TEMP/packager-cli-assets/SHA256SUMS")" -eq 4
+          (cd "$RUNNER_TEMP/packager-cli-assets" && sha256sum --check SHA256SUMS)
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-manager-channels-${{ steps.release.outputs.tag }}
+          path: |
+            ${{ runner.temp }}/packager-cli-assets/packager.rb
+            ${{ runner.temp }}/packager-cli-assets/packager.json
+            ${{ runner.temp }}/packager-cli-assets/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
+
+  validate-homebrew:
+    needs: generate
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-latest, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: package-manager-channels-${{ needs.generate.outputs.tag }}
+          path: channels
+      - name: Install and test through an ephemeral Homebrew tap
+        shell: bash
+        env:
+          VERSION: ${{ needs.generate.outputs.version }}
+        run: |
+          if brew list --formula packager >/dev/null 2>&1; then
+            echo "The runner unexpectedly already has a packager formula installed." >&2
+            exit 1
+          fi
+          brew tap-new --no-git what256/packager-validation
+          cleanup() {
+            brew uninstall --formula packager >/dev/null 2>&1 || true
+            brew untap what256/packager-validation >/dev/null 2>&1 || true
+            brew developer off >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          tap_root=$(brew --repository what256/packager-validation)
+          cp channels/packager.rb "$tap_root/Formula/packager.rb"
+          brew install what256/packager-validation/packager
+          test "$(packager --version)" = "packager ${VERSION}"
+          brew test what256/packager-validation/packager
+
+  validate-scoop:
+    needs: generate
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-latest, windows-11-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: package-manager-channels-${{ needs.generate.outputs.tag }}
+          path: channels
+      - name: Verify, unpack, and execute the Scoop-selected binary
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.generate.outputs.version }}
+        run: |
+          $manifest = Get-Content channels/packager.json -Raw | ConvertFrom-Json
+          $architecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+          if ($architecture -eq "Arm64") {
+            $entry = $manifest.architecture.arm64
+          } elseif ($architecture -eq "X64") {
+            $entry = $manifest.architecture.'64bit'
+          } else {
+            throw "Unsupported Windows runner architecture: $architecture"
+          }
+
+          Invoke-WebRequest -Uri $entry.url -OutFile packager.zip
+          $actualHash = (Get-FileHash packager.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $entry.hash) {
+            throw "Scoop manifest hash mismatch: expected $($entry.hash), got $actualHash"
+          }
+          Expand-Archive packager.zip -DestinationPath unpacked
+          $actualVersion = (& ./unpacked/packager.exe --version | Out-String).Trim()
+          if ($actualVersion -ne "packager $env:VERSION") {
+            throw "Unexpected CLI version: $actualVersion"
+          }
+          & ./unpacked/packager.exe --help | Out-Null
+
+  publish:
+    needs: [generate, validate-homebrew, validate-scoop]
+    if: needs.generate.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/download-artifact@v8
+        with:
+          name: package-manager-channels-${{ needs.generate.outputs.tag }}
+          path: channels
+      - name: Update Homebrew tap and Scoop bucket
+        env:
+          VERSION: ${{ needs.generate.outputs.version }}
+        run: |
+          git pull --ff-only origin main
+          mkdir -p Formula bucket
+          cp channels/packager.rb Formula/packager.rb
+          cp channels/packager.json bucket/packager.json
+          git add Formula/packager.rb bucket/packager.json
+          if git diff --cached --quiet; then
+            echo "Package-manager channels already point to v${VERSION}."
+            exit 0
+          fi
+          git diff --cached --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "Update package-manager channels to v${VERSION}"
+          git push origin HEAD:main

@@ -48,17 +48,19 @@ The npm launcher installs only the native package for the current machine: macOS
 
 Every release includes standalone `.tar.gz` and `.zip` archives plus `SHA256SUMS`.
 
-It also publishes generated, checksum-pinned manifests:
+Once the first stable release is published, Packager's repository also acts as an automatically updated Homebrew tap and Scoop bucket:
 
 ```bash
-# macOS, using the packager.rb asset from the chosen release
-brew install --formula https://github.com/what256/packager/releases/download/v0.1.0/packager.rb
+# macOS
+brew tap what256/packager https://github.com/what256/packager
+brew install what256/packager/packager
 
-# Windows, using the packager.json asset from the chosen release
-scoop install https://github.com/what256/packager/releases/download/v0.1.0/packager.json
+# Windows
+scoop bucket add packager https://github.com/what256/packager
+scoop install packager/packager
 ```
 
-Choose the matching release version. Maintainers can move the same generated files into a Homebrew tap or Scoop bucket without changing their contents.
+Publishing a non-prerelease GitHub release regenerates the checksum-pinned `Formula/packager.rb` and `bucket/packager.json` files from its four standalone CLI archives. Homebrew and Scoop therefore receive later Packager versions through their normal update commands. Each release also retains version-pinned `packager.rb` and `packager.json` assets for direct installation.
 
 ### Build from source
 
@@ -218,7 +220,7 @@ cargo test --workspace
 cargo check -p packager-core -p packager-cli --target x86_64-pc-windows-msvc
 ```
 
-The CI workflow runs the full workspace on GitHub's native macOS and Windows runners for ARM64 and x64. The release workflow builds both desktop architectures on each OS, signs installers, builds four standalone CLIs, publishes npm packages, and generates package-manager manifests.
+The CI workflow runs the full workspace on GitHub's native macOS and Windows runners for ARM64 and x64. The release workflow builds both desktop architectures on each OS, signs installers, builds four standalone CLIs, publishes npm packages, and generates package-manager manifests. When a stable release is published, a separate workflow validates its public CLI archives and advances the repository's Homebrew and Scoop channels.
 
 ## Publishing
 

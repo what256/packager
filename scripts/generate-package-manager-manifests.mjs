@@ -2,22 +2,32 @@ import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-const [repository, version, artifactsRoot] = process.argv.slice(2);
+const [repository, version, artifactsRoot, releaseTag = `v${version}`] = process.argv.slice(2);
 if (!repository || !version || !artifactsRoot) {
   throw new Error("repository, version, and artifacts directory are required");
 }
-
-const assets = {};
-for (const directory of readdirSync(artifactsRoot)) {
-  const directoryPath = join(artifactsRoot, directory);
-  for (const name of readdirSync(directoryPath)) {
-    if (!name.endsWith(".tar.gz") && !name.endsWith(".zip")) continue;
-    const path = join(directoryPath, name);
-    assets[name] = createHash("sha256").update(readFileSync(path)).digest("hex");
-  }
+if (!/^[0-9A-Za-z._-]+$/.test(releaseTag)) {
+  throw new Error("release tag contains unsupported characters");
 }
 
-const base = `https://github.com/${repository}/releases/download/v${version}`;
+const assets = {};
+function collectArchives(directory) {
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      collectArchives(path);
+      continue;
+    }
+    if (!entry.name.endsWith(".tar.gz") && !entry.name.endsWith(".zip")) continue;
+    if (assets[entry.name]) {
+      throw new Error(`Duplicate release asset ${entry.name}`);
+    }
+    assets[entry.name] = createHash("sha256").update(readFileSync(path)).digest("hex");
+  }
+}
+collectArchives(artifactsRoot);
+
+const base = `https://github.com/${repository}/releases/download/${releaseTag}`;
 const macArm = `packager-cli-v${version}-darwin-arm64.tar.gz`;
 const macX64 = `packager-cli-v${version}-darwin-x64.tar.gz`;
 const winArm = `packager-cli-v${version}-win32-arm64.zip`;
