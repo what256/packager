@@ -83,7 +83,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: .
-      - run: node scripts/check-versions.mjs "$VERSION"
+      - run: node scripts/check-versions.mjs "${{ needs.resolve.outputs.version }}"
       - run: cargo build --locked --release -p packager-cli --target ${{ matrix.target }}
       - name: Verify and stage native CLI
         shell: bash
