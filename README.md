@@ -38,7 +38,7 @@ The desktop app provides the catalog, visual package builder, app controls, logs
 ### npm CLI
 
 ```bash
-npm install --global packager-cli
+npm install --global @what256/packager
 packager --help
 ```
 
@@ -191,7 +191,7 @@ Those updater keys do not sign the DMG, Windows installer, or npm package. Publi
 | `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Desktop automatic-update artifact signatures on macOS and Windows |
 | Six `APPLE_*`/`KEYCHAIN_PASSWORD` secrets | Developer ID signing and Apple notarization |
 | `WINDOWS_CERTIFICATE`, `WINDOWS_CERTIFICATE_PASSWORD` | Authenticode signing for Windows executables/MSI/NSIS |
-| `NPM_TOKEN` | Bootstrap the first publication of `packager-cli` and its four native packages; later releases can use npm trusted publishing |
+| `NPM_TOKEN` | Bootstrap the first publication of `@what256/packager` and its four native packages; later releases can use npm trusted publishing |
 | `GITHUB_TOKEN` | Create the draft release and upload assets; supplied by GitHub Actions |
 
 Packager users do not need any publishing secret. Package application secrets are generated locally and live in the operating-system credential vault.
@@ -232,7 +232,7 @@ After creating the GitHub repository and adding its remote:
 
 That script uploads only the updater key pair. Add the Apple, Windows, and npm secrets listed above in repository settings. The workflow deliberately fails instead of creating a partly signed or partly published release when a required credential is missing.
 
-Before the first npm release, confirm the five currently unclaimed package names can be claimed by the npm account represented by `NPM_TOKEN`: `packager-cli` and its four `packager-cli-{platform}-{arch}` packages.
+The public npm entry point is `@what256/packager`; its four `@what256/packager-{platform}-{arch}` packages are internal native-binary dependencies. All five packages are public and published from the same workflow.
 
 Push a version tag only after CI passes:
 

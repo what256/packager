@@ -1,5 +1,5 @@
 {
-  "name": "packager-cli-darwin-x64",
+  "name": "@what256/packager-darwin-x64",
   "version": "0.1.0",
   "description": "Packager CLI native binary for macOS Intel",
   "license": "MIT",

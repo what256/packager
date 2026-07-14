@@ -24,14 +24,14 @@ for (const directory of readdirSync(root)) {
   writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
 
   copyFileSync("LICENSE", `${root}/${directory}/LICENSE`);
-  const isLauncher = manifest.name === "packager-cli";
+  const isLauncher = manifest.bin?.packager === "bin/packager.js";
   const readme = isLauncher
     ? `# Packager CLI
 
 Install the native Packager command-line interface for macOS or Windows:
 
 \`\`\`sh
-npm install --global packager-cli
+npm install --global @what256/packager
 packager --help
 \`\`\`
 
@@ -43,7 +43,7 @@ Project documentation and source code: https://github.com/${repository ?? "what2
 
 ${manifest.description}.
 
-This is a platform-specific binary used by [\`packager-cli\`](https://www.npmjs.com/package/packager-cli). Install \`packager-cli\` instead of depending on this package directly.
+This is a platform-specific binary used by [\`@what256/packager\`](https://www.npmjs.com/package/@what256/packager). Install \`@what256/packager\` instead of depending on this package directly.
 
 Project documentation and source code: https://github.com/${repository ?? "what256/packager"}
 `;

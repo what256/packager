@@ -112,9 +112,10 @@ jobs:
           publish_package npm/packager-cli
       - name: Verify registry metadata
         run: |
-          for package in packager-cli-darwin-arm64 packager-cli-darwin-x64 packager-cli-win32-arm64 packager-cli-win32-x64 packager-cli; do
-            test "$(npm view "${package}@${{ inputs.version }}" version)" = "${{ inputs.version }}"
-            test "$(npm view "${package}@${{ inputs.version }}" repository.url)" = "git+https://github.com/${GITHUB_REPOSITORY}.git"
+          for package_path in npm/packager-cli-darwin-arm64 npm/packager-cli-darwin-x64 npm/packager-cli-win32-arm64 npm/packager-cli-win32-x64 npm/packager-cli; do
+            package_name=$(node -p "require('./${package_path}/package.json').name")
+            test "$(npm view "${package_name}@${{ inputs.version }}" version)" = "${{ inputs.version }}"
+            test "$(npm view "${package_name}@${{ inputs.version }}" repository.url)" = "git+https://github.com/${GITHUB_REPOSITORY}.git"
           done
 
   verify-install:
@@ -135,7 +136,7 @@ jobs:
           registry-url: https://registry.npmjs.org
       - name: Install published CLI
         shell: bash
-        run: npm install --global --no-audit --no-fund "packager-cli@${{ inputs.version }}"
+        run: npm install --global --no-audit --no-fund "@what256/packager@${{ inputs.version }}"
       - name: Verify published CLI
         shell: bash
         run: |

@@ -1,5 +1,5 @@
 {
-  "name": "packager-cli",
+  "name": "@what256/packager",
   "version": "0.1.0",
   "description": "Install the native Packager CLI for macOS and Windows",
   "license": "MIT",
@@ -17,9 +17,9 @@
     "node": ">=18"
   },
   "optionalDependencies": {
-    "packager-cli-darwin-arm64": "0.1.0",
-    "packager-cli-darwin-x64": "0.1.0",
-    "packager-cli-win32-arm64": "0.1.0",
-    "packager-cli-win32-x64": "0.1.0"
+    "@what256/packager-darwin-arm64": "0.1.0",
+    "@what256/packager-darwin-x64": "0.1.0",
+    "@what256/packager-win32-arm64": "0.1.0",
+    "@what256/packager-win32-x64": "0.1.0"
   }
 }

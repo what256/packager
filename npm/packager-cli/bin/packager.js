@@ -6,10 +6,10 @@ const { dirname, join } = require("node:path");
 
 const key = `${process.platform}-${process.arch}`;
 const packages = {
-  "darwin-arm64": "packager-cli-darwin-arm64",
-  "darwin-x64": "packager-cli-darwin-x64",
-  "win32-arm64": "packager-cli-win32-arm64",
-  "win32-x64": "packager-cli-win32-x64"
+  "darwin-arm64": "@what256/packager-darwin-arm64",
+  "darwin-x64": "@what256/packager-darwin-x64",
+  "win32-arm64": "@what256/packager-win32-arm64",
+  "win32-x64": "@what256/packager-win32-x64"
 };
 
 const packageName = packages[key];
