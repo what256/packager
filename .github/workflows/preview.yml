@@ -40,12 +40,13 @@ jobs:
       - run: npm ci
       - run: node scripts/configure-preview-build.mjs
       - run: npm run tauri build -- --target ${{ matrix.target }}
+      - name: Add unsigned preview notice
+        shell: bash
+        run: cp docs/PREVIEW-NOTICE.txt "target/${{ matrix.target }}/release/bundle/PREVIEW-NOTICE.txt"
       - uses: actions/upload-artifact@v7
         with:
           name: UNSIGNED-preview-desktop-${{ matrix.platform }}
-          path: |
-            target/${{ matrix.target }}/release/bundle/**
-            docs/PREVIEW-NOTICE.txt
+          path: target/${{ matrix.target }}/release/bundle/**
           if-no-files-found: error
           retention-days: 14
 
@@ -95,12 +96,11 @@ jobs:
           else
             (cd dist && 7z a "packager-cli-v${VERSION}-${{ matrix.platform }}.zip" packager.exe)
           fi
+          cp docs/PREVIEW-NOTICE.txt dist/PREVIEW-NOTICE.txt
       - uses: actions/upload-artifact@v7
         with:
           name: preview-cli-${{ matrix.platform }}
-          path: |
-            dist/*
-            docs/PREVIEW-NOTICE.txt
+          path: dist/*
           if-no-files-found: error
           retention-days: 14
 
@@ -128,11 +128,10 @@ jobs:
           for package in npm/packager-cli-darwin-arm64 npm/packager-cli-darwin-x64 npm/packager-cli-win32-arm64 npm/packager-cli-win32-x64 npm/packager-cli; do
             npm pack "./$package" --pack-destination preview-npm
           done
+          cp docs/PREVIEW-NOTICE.txt preview-npm/PREVIEW-NOTICE.txt
       - uses: actions/upload-artifact@v7
         with:
           name: preview-npm-tarballs
-          path: |
-            preview-npm/*
-            docs/PREVIEW-NOTICE.txt
+          path: preview-npm/*
           if-no-files-found: error
           retention-days: 14
