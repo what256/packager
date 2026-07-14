@@ -1,0 +1,15 @@
+import { readFileSync, writeFileSync } from "node:fs";
+
+const [path = "src-tauri/tauri.conf.json"] = process.argv.slice(2);
+const config = JSON.parse(readFileSync(path, "utf8"));
+
+// Preview artifacts deliberately skip updater and operating-system code signing.
+// Official tag builds keep these settings and fail when credentials are absent.
+config.bundle.createUpdaterArtifacts = false;
+if (config.bundle.windows) {
+  delete config.bundle.windows.certificateThumbprint;
+  delete config.bundle.windows.digestAlgorithm;
+  delete config.bundle.windows.timestampUrl;
+}
+
+writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);

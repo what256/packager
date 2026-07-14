@@ -2,13 +2,19 @@
 
 Packager turns containerized, self-hosted software into ordinary local apps on macOS and Windows. Give it a Compose project, a container image, a public GitHub repository, or an existing `packager.yml`; Packager owns the private runtime, installation, data, ports, start/stop lifecycle, logs, secrets, and image updates.
 
-The desktop application and headless CLI are two clients of the same Rust engine. Docker Desktop is not required.
+The desktop application and headless CLI are two clients of the same Rust engine. Their internal executable names are kept distinct so workspace builds cannot overwrite one another. Docker Desktop is not required.
 
 > Status: cross-platform alpha. macOS is runtime-tested locally. Windows x64 and ARM64 pass the full workspace checks on native GitHub runners. The Windows runtime still needs end-to-end validation on Windows hardware before the first stable release.
 
 ## Install Packager
 
 Choose whichever interface fits your workflow.
+
+### Credential-free development previews
+
+Maintainers can run the [Preview artifacts workflow](https://github.com/what256/packager/actions/workflows/preview.yml) without Apple, Windows, or npm credentials. It builds native desktop bundles, standalone CLIs, and installable npm `.tgz` files for all four supported platform/architecture combinations. Download the results from the workflow run; they expire after 14 days.
+
+Preview desktop artifacts are deliberately labeled `UNSIGNED` and include `PREVIEW-NOTICE.txt`. macOS Gatekeeper and Windows SmartScreen warnings are expected because these builds are neither notarized nor operating-system signed. They are for development testing only, are not published to npm or GitHub Releases, and do not replace the signed release process below.
 
 ### Desktop app
 
@@ -179,6 +185,8 @@ Those updater keys do not sign the DMG, Windows installer, or npm package. Publi
 | `GITHUB_TOKEN` | Create the draft release and upload assets; supplied by GitHub Actions |
 
 Packager users do not need any publishing secret. Package application secrets are generated locally and live in the operating-system credential vault.
+
+`NPM_TOKEN` is an npm-account publishing credential, not an API-development credential. It is needed only for the first official registry publication; credential-free preview tarballs remain available through GitHub Actions. The Windows certificate may be added later without changing the application or CLI architecture.
 
 ## Development
 

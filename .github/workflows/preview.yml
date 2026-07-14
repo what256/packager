@@ -1,0 +1,138 @@
+name: Preview artifacts
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            platform: darwin-arm64
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+            platform: darwin-x64
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            platform: win32-x64
+          - target: aarch64-pc-windows-msvc
+            runner: windows-11-arm
+            platform: win32-arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+      - run: npm ci
+      - run: node scripts/configure-preview-build.mjs
+      - run: npm run tauri build -- --target ${{ matrix.target }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: UNSIGNED-preview-desktop-${{ matrix.platform }}
+          path: |
+            target/${{ matrix.target }}/release/bundle/**
+            docs/PREVIEW-NOTICE.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  cli:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            platform: darwin-arm64
+            executable: packager
+            archive: tar
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+            platform: darwin-x64
+            executable: packager
+            archive: tar
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            platform: win32-x64
+            executable: packager.exe
+            archive: zip
+          - target: aarch64-pc-windows-msvc
+            runner: windows-11-arm
+            platform: win32-arm64
+            executable: packager.exe
+            archive: zip
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+      - run: cargo build --release -p packager-cli --target ${{ matrix.target }}
+      - name: Stage native CLI
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp "target/${{ matrix.target }}/release/${{ matrix.executable }}" "dist/${{ matrix.executable }}"
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "${{ matrix.archive }}" = tar ]; then
+            tar -C dist -czf "$PWD/dist/packager-cli-v${VERSION}-${{ matrix.platform }}.tar.gz" packager
+          else
+            (cd dist && 7z a "packager-cli-v${VERSION}-${{ matrix.platform }}.zip" packager.exe)
+          fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: preview-cli-${{ matrix.platform }}
+          path: |
+            dist/*
+            docs/PREVIEW-NOTICE.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  npm-tarballs:
+    needs: cli
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: preview-cli-*
+          path: artifacts
+      - name: Stage credential-free npm tarballs
+        run: |
+          VERSION=$(node -p "require('./package.json').version")-preview.${GITHUB_RUN_NUMBER}
+          node scripts/prepare-npm-release.mjs "$VERSION" "$GITHUB_REPOSITORY"
+          install -Dm755 artifacts/preview-cli-darwin-arm64/packager npm/packager-cli-darwin-arm64/bin/packager
+          install -Dm755 artifacts/preview-cli-darwin-x64/packager npm/packager-cli-darwin-x64/bin/packager
+          install -Dm755 artifacts/preview-cli-win32-arm64/packager.exe npm/packager-cli-win32-arm64/bin/packager.exe
+          install -Dm755 artifacts/preview-cli-win32-x64/packager.exe npm/packager-cli-win32-x64/bin/packager.exe
+          mkdir -p preview-npm
+          for package in npm/packager-cli-darwin-arm64 npm/packager-cli-darwin-x64 npm/packager-cli-win32-arm64 npm/packager-cli-win32-x64 npm/packager-cli; do
+            npm pack "./$package" --pack-destination preview-npm
+          done
+      - uses: actions/upload-artifact@v7
+        with:
+          name: preview-npm-tarballs
+          path: |
+            preview-npm/*
+            docs/PREVIEW-NOTICE.txt
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,12 @@
+PACKAGER DEVELOPMENT PREVIEW
+
+This artifact is provided for testing only. It is not an official release.
+
+- macOS applications are not Developer ID signed or Apple-notarized.
+- Windows executables and installers are not Authenticode signed.
+- Preview builds do not contain signed automatic-update artifacts.
+- Operating-system security warnings are expected.
+
+Do not redistribute this artifact as a stable or signed Packager release.
+The source revision and GitHub Actions run that produced it are the authority
+for its contents.
