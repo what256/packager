@@ -21,4 +21,4 @@ gh secret set TAURI_SIGNING_PRIVATE_KEY < .tauri/packager.key
   -w | gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 
 echo "Updater signing secrets configured for $(gh repo view --json nameWithOwner --jq .nameWithOwner)."
-echo "Add the Apple, Windows code-signing, and NPM_TOKEN secrets listed in README.md before publishing."
+echo "npm publishing uses trusted OIDC and needs no token. Add the deferred Apple and Windows code-signing secrets listed in README.md before a stable desktop release."

@@ -111,6 +111,17 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: --target ${{ matrix.target }}
+      - name: Verify Developer ID, notarization, and updater artifacts
+        if: runner.os == 'macOS'
+        shell: bash
+        run: sh scripts/verify-macos-release.sh "${{ matrix.target }}" "$APPLE_SIGNING_IDENTITY"
+      - name: Verify Authenticode, timestamping, and updater artifacts
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./scripts/verify-windows-release.ps1 `
+            -Target "${{ matrix.target }}" `
+            -ExpectedThumbprint $env:WINDOWS_CERTIFICATE_THUMBPRINT
 
   cli:
     strategy:

@@ -134,7 +134,7 @@ Maintainers can register a dedicated GitHub Actions runner with the labels `wind
 - Dynamic loopback ports with collision repair
 - Secrets in macOS Keychain or Windows Credential Manager
 - Start, stop, readiness detection, logs, deep-link launchers, and automatic image updates
-- Signed desktop self-updates; signed/notarized macOS and Authenticode-signed Windows release configuration
+- Signed desktop self-updates; signed/notarized macOS and Authenticode-signed Windows release configuration with post-build signature, timestamp, and updater-artifact verification
 - Blocking of privileged containers, host namespaces, engine-socket mounts, devices/capabilities, unrestricted host binds, and non-loopback published ports
 
 ## Package format
@@ -247,7 +247,7 @@ After creating the GitHub repository and adding its remote:
 ./scripts/configure-github-secrets.sh
 ```
 
-That script uploads only the updater key pair. Add the Apple, Windows, and npm secrets listed above in repository settings. The workflow deliberately fails instead of creating a partly signed or partly published release when a required credential is missing.
+That script uploads only the updater key pair. npm publishing uses trusted OIDC and needs no repository token. Add the deferred Apple and Windows secrets listed above before a stable desktop release. The release workflow fails when credentials are absent and independently verifies Developer ID identity/notarization stapling, Authenticode identity/timestamping, and the presence of signed updater artifacts after each build.
 
 The public npm entry point is `@what256/packager`; its four `@what256/packager-{platform}-{arch}` packages are internal native-binary dependencies. All five packages are public and published from the same workflow.
 
