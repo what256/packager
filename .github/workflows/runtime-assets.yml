@@ -1,0 +1,79 @@
+name: Managed runtime assets
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - crates/packager-core/src/managed_runtime.rs
+      - crates/packager-core/Cargo.toml
+      - Cargo.lock
+      - .github/workflows/runtime-assets.yml
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 1 * *"
+
+permissions:
+  contents: read
+
+jobs:
+  windows-runtime-install:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            target: x86_64-pc-windows-msvc
+          - runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+      - run: cargo build --locked -p packager-cli --target ${{ matrix.target }}
+      - name: Download, install, and execute the private Windows runtime tools
+        shell: pwsh
+        env:
+          PACKAGER_DATA_DIR: ${{ runner.temp }}\packager-data
+          PACKAGER_CACHE_DIR: ${{ runner.temp }}\packager-cache
+        run: |
+          $binary = "target/${{ matrix.target }}/debug/packager.exe"
+          $status = (& $binary --json runtime install | Out-String) | ConvertFrom-Json
+          if (-not $status.installed -or $status.running -or $status.state -ne "stopped") {
+            throw "Unexpected installed runtime status: $($status | ConvertTo-Json -Compress)"
+          }
+
+          $runtime = Join-Path $env:PACKAGER_DATA_DIR "runtime"
+          $executables = @(
+            (Join-Path $runtime "bin/podman.exe"),
+            (Join-Path $runtime "bin/gvproxy.exe"),
+            (Join-Path $runtime "bin/win-sshproxy.exe"),
+            (Join-Path $runtime "docker-config/cli-plugins/docker-compose.exe")
+          )
+          foreach ($executable in $executables) {
+            if (-not (Test-Path $executable -PathType Leaf)) {
+              throw "Managed runtime executable is missing: $executable"
+            }
+          }
+
+          $podmanVersion = (& $executables[0] --version | Out-String).Trim()
+          if ($podmanVersion -notmatch "5\.8\.2") {
+            throw "Unexpected Podman version: $podmanVersion"
+          }
+          $composeVersion = (& $executables[3] version | Out-String).Trim()
+          if ($composeVersion -notmatch "5\.1\.4") {
+            throw "Unexpected Compose version: $composeVersion"
+          }
+
+          $secondInstall = (& $binary --json runtime install | Out-String) | ConvertFrom-Json
+          if (-not $secondInstall.installed -or $secondInstall.running) {
+            throw "Managed runtime installation is not idempotent"
+          }
+          $partialDownloads = @(Get-ChildItem $runtime -Recurse -Filter "*.part-*" -ErrorAction SilentlyContinue)
+          if ($partialDownloads.Count -ne 0) {
+            throw "Managed runtime left partial downloads behind"
+          }

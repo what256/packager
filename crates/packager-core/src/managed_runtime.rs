@@ -180,6 +180,16 @@ impl RuntimePaths {
         self.bin.join("podman.exe")
     }
 
+    #[cfg(target_os = "windows")]
+    fn gvproxy(&self) -> PathBuf {
+        self.bin.join("gvproxy.exe")
+    }
+
+    #[cfg(target_os = "windows")]
+    fn win_sshproxy(&self) -> PathBuf {
+        self.bin.join("win-sshproxy.exe")
+    }
+
     fn marker(&self) -> PathBuf {
         self.root.join("runtime-version")
     }
@@ -195,9 +205,14 @@ impl RuntimePaths {
                 .all(|path| path.is_file());
         #[cfg(target_os = "windows")]
         return marked
-            && [self.podman(), self.compose()]
-                .iter()
-                .all(|path| path.is_file());
+            && [
+                self.podman(),
+                self.gvproxy(),
+                self.win_sshproxy(),
+                self.compose(),
+            ]
+            .iter()
+            .all(|path| path.is_file());
         #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
         return false;
     }
@@ -501,6 +516,21 @@ fn checked_output(output: Result<Output, std::io::Error>, action: &str) -> Resul
     }
 }
 
+#[cfg(target_os = "windows")]
+fn configure_podman_machine_init(command: &mut Command, cpus: &str) {
+    command.args([
+        "machine",
+        "init",
+        "--cpus",
+        cpus,
+        "--memory",
+        "6144",
+        "--disk-size",
+        "60",
+        PODMAN_MACHINE,
+    ]);
+}
+
 fn docker_version(paths: &RuntimePaths) -> Option<String> {
     if !paths.installed() {
         return None;
@@ -606,18 +636,10 @@ pub fn start(engine: &Engine) -> Result<ManagedRuntimeStatus, String> {
             let mut init = Command::new(paths.podman());
             paths.apply_environment(&mut init, false);
             checked_output(
-                init.args([
-                    "machine",
-                    "init",
-                    "--cpus",
-                    &cpus,
-                    "--memory",
-                    "6144",
-                    "--disk-size",
-                    "60",
-                    PODMAN_MACHINE,
-                ])
-                .output(),
+                {
+                    configure_podman_machine_init(&mut init, &cpus);
+                    init.output()
+                },
                 "create Packager's private WSL2 runtime",
             )?;
         }
@@ -759,5 +781,99 @@ mod tests {
                 .all(|character| character.is_ascii_hexdigit()));
             assert!(asset.url.starts_with("https://"));
         }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_runtime_requires_every_managed_executable() {
+        let root = std::env::temp_dir().join(format!("packager-runtime-test-{}", Uuid::new_v4()));
+        let engine = Engine::new(root.join("data"), root.join("cache"))
+            .expect("test engine should be created");
+        let paths = RuntimePaths::from_engine(&engine).expect("runtime paths should resolve");
+        paths.prepare().expect("runtime paths should be created");
+        for executable in [
+            paths.podman(),
+            paths.gvproxy(),
+            paths.win_sshproxy(),
+            paths.compose(),
+        ] {
+            fs::write(executable, b"test").expect("test executable should be created");
+        }
+        fs::write(paths.marker(), format!("{RUNTIME_VERSION}\n"))
+            .expect("runtime marker should be created");
+        assert!(paths.installed());
+
+        fs::remove_file(paths.gvproxy()).expect("test helper should be removable");
+        assert!(!paths.installed());
+        fs::remove_dir_all(root).expect("runtime test directory should be removable");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_runtime_command_uses_private_environment() {
+        use std::collections::HashMap;
+
+        let root = std::env::temp_dir().join(format!("packager-env-test-{}", Uuid::new_v4()));
+        let engine = Engine::new(root.join("data"), root.join("cache"))
+            .expect("test engine should be created");
+        let paths = RuntimePaths::from_engine(&engine).expect("runtime paths should resolve");
+        let mut command = Command::new(paths.podman());
+        paths.apply_environment(&mut command, false);
+        let environment = command
+            .get_envs()
+            .filter_map(|(key, value)| {
+                value.map(|value| (key.to_os_string(), value.to_os_string()))
+            })
+            .collect::<HashMap<_, _>>();
+
+        assert_eq!(
+            environment.get(std::ffi::OsStr::new("HOME")),
+            Some(&paths.root.clone().into_os_string())
+        );
+        assert_eq!(
+            environment.get(std::ffi::OsStr::new("APPDATA")),
+            Some(&paths.root.join("podman-config").into_os_string())
+        );
+        assert_eq!(
+            environment.get(std::ffi::OsStr::new("LOCALAPPDATA")),
+            Some(&paths.root.join("podman-data").into_os_string())
+        );
+        assert_eq!(
+            environment.get(std::ffi::OsStr::new("PODMAN_COMPOSE_PROVIDER")),
+            Some(&paths.compose().into_os_string())
+        );
+        let configured_path = environment
+            .get(std::ffi::OsStr::new("PATH"))
+            .expect("PATH should be configured");
+        assert_eq!(
+            std::env::split_paths(configured_path).next(),
+            Some(paths.bin)
+        );
+        fs::remove_dir_all(root).expect("environment test directory should be removable");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_machine_init_is_private_and_resource_bounded() {
+        let mut command = Command::new("podman.exe");
+        configure_podman_machine_init(&mut command, "4");
+        let arguments = command
+            .get_args()
+            .map(|argument| argument.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            arguments,
+            [
+                "machine",
+                "init",
+                "--cpus",
+                "4",
+                "--memory",
+                "6144",
+                "--disk-size",
+                "60",
+                PODMAN_MACHINE,
+            ]
+        );
     }
 }
