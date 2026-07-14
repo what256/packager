@@ -4,7 +4,7 @@ Packager turns containerized, self-hosted software into ordinary local apps on m
 
 The desktop application and headless CLI are two clients of the same Rust engine. Their internal executable names are kept distinct so workspace builds cannot overwrite one another. Docker Desktop is not required.
 
-> Status: cross-platform alpha. macOS is runtime-tested locally. Windows x64 and ARM64 pass the full workspace checks, real managed-tool installation smoke tests, and a native CLI lifecycle contract covering WSL detection plus machine create/start/status/stop/restart. Starting an actual WSL2 machine and running a real packaged workload still need end-to-end validation on Windows hardware before the first stable release.
+> Status: cross-platform alpha. macOS has a repeatable real-workload runtime gate. Windows x64 and ARM64 pass the full workspace checks, real managed-tool installation smoke tests, and a native CLI lifecycle contract covering WSL detection plus machine create/start/status/stop/restart. Starting an actual WSL2 machine and running a real packaged workload still need end-to-end validation on Windows hardware before the first stable release.
 
 ## Install Packager
 
@@ -78,6 +78,7 @@ The CLI uses the same data directory as the desktop app, so apps installed in on
 ```bash
 packager status
 packager runtime install
+packager runtime uninstall
 packager catalog
 packager install open-notebook
 packager start open-notebook --open
@@ -107,7 +108,20 @@ Packager downloads only version-pinned assets with committed SHA-256 digests.
 
 On Windows, Packager does not install Docker or Podman Desktop. It stores the portable tools and Podman configuration under Packager's application-data directory, and creates an OS-visible WSL2 machine named `packager-runtime`. If WSL2 is disabled, Packager explains that the user must run `wsl --install` once and restart if Windows requests it. That Windows feature change is the only step that may require administrator approval.
 
-On macOS, Packager does not activate or modify the user's global Docker context. Its VM, socket, cache, and Docker configuration remain under Packager's Application Support directory.
+On macOS, Packager does not activate or modify the user's global Docker context. Runtime tools, cache, and Docker configuration remain under Packager's Application Support directory. Colima and Lima VM state uses a short, per-installation directory under `~/.packager/r/` so Lima's Unix sockets remain below macOS's fixed path-length limit. `packager runtime uninstall` removes both locations and the private VM.
+
+### Real macOS release gate
+
+Run the full shared-engine lifecycle against a disposable nginx workload on a Mac with Apple virtualization support:
+
+```bash
+cargo build --locked --release -p packager-cli
+PACKAGER="$PWD/target/release/packager" \
+EVIDENCE_PATH="$PWD/artifacts/macos-runtime-e2e.json" \
+./scripts/macos-runtime-smoke.sh
+```
+
+The script uses an isolated temporary Packager data directory unless `PACKAGER_DATA_DIR` is supplied. It installs and starts the private Colima/Lima runtime, builds a Compose package, verifies loopback HTTP, logs, update settings, image recreation, bind-mounted data preservation, stop, and destructive uninstall, then stops the disposable runtime and removes its sandbox. A self-hosted Mac labeled `packager-runtime` can retain the same JSON evidence through the **Real macOS managed-runtime end-to-end** workflow.
 
 ### Real Windows release gate
 

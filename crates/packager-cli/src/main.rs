@@ -121,6 +121,9 @@ enum RuntimeCommand {
     Install,
     Start,
     Stop,
+    /// Delete Packager's private VM, runtime tools, and container storage.
+    #[command(alias = "remove")]
+    Uninstall,
 }
 
 #[derive(Subcommand)]
@@ -225,6 +228,9 @@ fn run() -> Result<(), String> {
             RuntimeCommand::Install => print(&packager_core::install_runtime(&engine)?, cli.json),
             RuntimeCommand::Start => print(&packager_core::start_runtime(&engine)?, cli.json),
             RuntimeCommand::Stop => print(&packager_core::stop_runtime(&engine)?, cli.json),
+            RuntimeCommand::Uninstall => {
+                print(&packager_core::uninstall_runtime(&engine)?, cli.json)
+            }
         },
         Commands::Install { id } => print(&packager_core::install(&engine, &id)?, cli.json),
         Commands::Import { path } => print(

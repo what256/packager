@@ -141,14 +141,23 @@ jobs:
             throw "The managed runtime did not finish stopped"
           }
 
+          $removed = (& $binary --json runtime uninstall | Out-String) | ConvertFrom-Json
+          if ($removed.installed -or $removed.running -or $removed.state -ne "not-installed") {
+            throw "The managed runtime did not uninstall cleanly: $($removed | ConvertTo-Json -Compress)"
+          }
+          if (Test-Path $runtime) {
+            throw "Managed runtime files remained after uninstall: $runtime"
+          }
+
           $commands = @(Get-Content (Join-Path $env:PACKAGER_RUNTIME_MOCK_DIR "commands.log"))
           $initializations = @($commands | Where-Object {
             $_ -match '^podman machine init --cpus [2-4] --memory 6144 --disk-size 60 packager-runtime$'
           })
           $starts = @($commands | Where-Object { $_ -eq "podman machine start packager-runtime" })
           $stops = @($commands | Where-Object { $_ -eq "podman machine stop packager-runtime" })
+          $removals = @($commands | Where-Object { $_ -eq "podman machine rm --force packager-runtime" })
           $wslChecks = @($commands | Where-Object { $_ -eq "wsl --status" })
-          if ($initializations.Count -ne 1 -or $starts.Count -ne 2 -or $stops.Count -ne 2) {
+          if ($initializations.Count -ne 1 -or $starts.Count -ne 2 -or $stops.Count -ne 3 -or $removals.Count -ne 1) {
             throw "Unexpected managed-machine lifecycle: $($commands -join '; ')"
           }
           if ($wslChecks.Count -ne 3) {

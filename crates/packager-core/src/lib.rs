@@ -12,6 +12,7 @@ pub use builder::{analyze, build};
 pub use managed_runtime::{
     docker_command, ensure_running as ensure_runtime_running, install as install_runtime,
     start as start_runtime, status as runtime_status, stop as stop_runtime,
+    uninstall as uninstall_runtime,
 };
 pub use model::*;
 pub use runtime::{

@@ -122,6 +122,21 @@ fn run_podman(root: &Path, arguments: &[String]) {
                     .unwrap_or_else(|error| fail(&format!("cannot stop mock machine: {error}")));
             }
         }
+        [group, command, force, name]
+            if group == "machine"
+                && command == "rm"
+                && force == "--force"
+                && name == "packager-runtime" =>
+        {
+            if running.is_file() {
+                fs::remove_file(&running)
+                    .unwrap_or_else(|error| fail(&format!("cannot stop mock machine: {error}")));
+            }
+            if machine.is_file() {
+                fs::remove_file(machine)
+                    .unwrap_or_else(|error| fail(&format!("cannot remove mock machine: {error}")));
+            }
+        }
         _ => fail(&format!(
             "unexpected podman.exe arguments: {}",
             arguments.join(" ")

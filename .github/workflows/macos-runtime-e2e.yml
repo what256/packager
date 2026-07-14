@@ -1,0 +1,51 @@
+name: Real macOS managed-runtime end-to-end
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: Multi-architecture HTTP image used for the disposable workload
+        required: true
+        default: docker.io/library/nginx:alpine
+      timeout_seconds:
+        description: Maximum startup/update wait in seconds
+        required: true
+        default: "600"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: packager-real-macos-runtime-${{ runner.arch }}
+  cancel-in-progress: false
+
+jobs:
+  packaged-workload:
+    runs-on: [self-hosted, macOS, packager-runtime]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+      - name: Verify Apple virtualization support
+        shell: bash
+        run: test "$(sysctl -n kern.hv_support)" = 1
+      - name: Build the native Packager CLI
+        run: cargo build --locked --release -p packager-cli
+      - name: Run a real packaged workload through the managed runtime
+        shell: bash
+        env:
+          PACKAGER: ${{ github.workspace }}/target/release/packager
+          SMOKE_IMAGE: ${{ inputs.image }}
+          SMOKE_TIMEOUT_SECONDS: ${{ inputs.timeout_seconds }}
+          EVIDENCE_PATH: ${{ github.workspace }}/artifacts/macos-runtime-e2e.json
+        run: ./scripts/macos-runtime-smoke.sh
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: macos-runtime-e2e-${{ runner.arch }}
+          path: artifacts/macos-runtime-e2e.json
+          if-no-files-found: warn
+          retention-days: 90
