@@ -194,12 +194,11 @@ Those updater keys do not sign the DMG, Windows installer, or npm package. Publi
 | `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Desktop automatic-update artifact signatures on macOS and Windows |
 | Six `APPLE_*`/`KEYCHAIN_PASSWORD` secrets | Developer ID signing and Apple notarization |
 | `WINDOWS_CERTIFICATE`, `WINDOWS_CERTIFICATE_PASSWORD` | Authenticode signing for Windows executables/MSI/NSIS |
-| `NPM_TOKEN` | Bootstrap the first publication of `@what256/packager` and its four native packages; later releases can use npm trusted publishing |
 | `GITHUB_TOKEN` | Create the draft release and upload assets; supplied by GitHub Actions |
 
 Packager users do not need any publishing secret. Package application secrets are generated locally and live in the operating-system credential vault.
 
-`NPM_TOKEN` is an npm-account publishing credential, not an API-development credential. It is needed only to bootstrap the first registry publication. The dedicated `Publish npm CLI` workflow can publish and verify the CLI independently of desktop signing. After the packages exist, configure each package's npm trusted publisher for GitHub user `what256`, repository `packager`, workflow `publish-npm.yml`, and the `npm publish` action; the workflow already grants OIDC permission and uses a compatible npm CLI. Credential-free preview tarballs remain available through GitHub Releases. The Windows certificate may be added later without changing the application or CLI architecture.
+The first registry publication used a temporary bootstrap token. That token is no longer stored in GitHub. All five npm packages trust GitHub user `what256`, repository `packager`, workflow `publish-npm.yml`, and the `npm publish` action through OIDC. Packager 0.1.1 was published through that token-free path with verified registry signatures and SLSA provenance, then installed and executed on native macOS and Windows ARM64/x64 runners. The dedicated workflow can publish the CLI independently of desktop signing and also runs automatically when a stable GitHub release is published. Credential-free preview tarballs remain available through GitHub Releases. The Windows certificate may be added later without changing the application or CLI architecture.
 
 ## Development
 
@@ -221,7 +220,7 @@ cargo test --workspace
 cargo check -p packager-core -p packager-cli --target x86_64-pc-windows-msvc
 ```
 
-The CI workflow runs the full workspace on GitHub's native macOS and Windows runners for ARM64 and x64. The release workflow builds both desktop architectures on each OS, signs installers, builds four standalone CLIs, publishes npm packages, and generates package-manager manifests. When a stable release is published, a separate workflow validates its public CLI archives and advances the repository's Homebrew and Scoop channels.
+The CI workflow runs the full workspace on GitHub's native macOS and Windows runners for ARM64 and x64. The release workflow builds and signs both desktop architectures on each OS, builds four standalone CLIs, and generates package-manager manifests. When a stable release is published, the OIDC-only npm workflow publishes and verifies the five CLI packages, while a separate workflow validates the public CLI archives and advances the repository's Homebrew and Scoop channels.
 
 ## Publishing
 
