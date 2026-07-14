@@ -107,6 +107,20 @@ On Windows, Packager does not install Docker or Podman Desktop. It stores the po
 
 On macOS, Packager does not activate or modify the user's global Docker context. Its VM, socket, cache, and Docker configuration remain under Packager's Application Support directory.
 
+### Real Windows release gate
+
+The final Windows runtime gate is executable as one PowerShell 7 command on a Windows 10/11 host with WSL2:
+
+```powershell
+./scripts/windows-wsl2-smoke.ps1 `
+  -Packager ./target/release/packager.exe `
+  -EvidencePath ./artifacts/windows-wsl2-e2e.json
+```
+
+It builds and imports a disposable nginx Compose package, writes unique content into Packager's Windows app-data directory, starts Packager's private WSL2/Podman machine, mounts and serves that data on a dynamic loopback port, checks HTTP readiness and logs, toggles automatic updates, verifies the bind-mounted data survives an image pull/recreate, stops, and destructively uninstalls the workload. It preserves a runtime that was already running and otherwise stops it during cleanup. The generated evidence JSON records the Packager/runtime versions, host architecture, image, URL, timestamps, and passed checks.
+
+Maintainers can register a dedicated GitHub Actions runner with the labels `windows` and `packager-wsl2`, then dispatch the **Real Windows WSL2 end-to-end** workflow. Hosted CI parses this script on both Windows x64 and ARM64; the hardware workflow deliberately waits for the separately provisioned WSL2-capable runner.
+
 ## What works
 
 - One Tauri-independent `packager-core` engine shared by desktop and CLI

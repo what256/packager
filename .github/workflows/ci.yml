@@ -39,6 +39,20 @@ jobs:
       - run: npm run build
       - run: node --check npm/packager-cli/bin/packager.js
       - run: node scripts/check-versions.mjs
+      - name: Parse the real Windows WSL2 smoke test
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path scripts/windows-wsl2-smoke.ps1),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -ne 0) {
+            throw ($errors | ForEach-Object Message | Out-String)
+          }
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets --all-features --target ${{ matrix.target }} -- -D warnings
       - run: cargo test --workspace --target ${{ matrix.target }}

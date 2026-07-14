@@ -10,6 +10,8 @@ Thank you for helping make local software easier to use.
 4. Preserve user data across stop, update, and non-destructive uninstall operations.
 5. Run the complete check sequence documented in `README.md`.
 
+Changes to the Windows managed runtime should also keep `runtime-assets.yml` green on both native architectures. Before a stable release, run `scripts/windows-wsl2-smoke.ps1` on a dedicated Windows host with WSL2 or dispatch the `windows-wsl2-e2e.yml` workflow on a runner labeled `packager-wsl2`, and retain its evidence JSON.
+
 ## Adding a catalog package
 
 - Use official upstream images.

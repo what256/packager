@@ -1,0 +1,58 @@
+name: Real Windows WSL2 end-to-end
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: Multi-architecture HTTP image used for the disposable workload
+        required: true
+        default: docker.io/library/nginx:alpine
+      timeout_seconds:
+        description: Maximum startup/update wait in seconds
+        required: true
+        default: "600"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: packager-real-wsl2
+  cancel-in-progress: false
+
+jobs:
+  packaged-workload:
+    runs-on: [self-hosted, windows, packager-wsl2]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+      - name: Verify the host exposes WSL2
+        shell: pwsh
+        run: |
+          $status = (& wsl.exe --status 2>&1 | Out-String)
+          if ($LASTEXITCODE -ne 0) {
+            throw "The packager-wsl2 runner must have WSL2 enabled: $status"
+          }
+      - name: Build the native Packager CLI
+        run: cargo build --locked --release -p packager-cli
+      - name: Run a real packaged workload through the managed runtime
+        shell: pwsh
+        env:
+          SMOKE_IMAGE: ${{ inputs.image }}
+          SMOKE_TIMEOUT_SECONDS: ${{ inputs.timeout_seconds }}
+        run: |
+          ./scripts/windows-wsl2-smoke.ps1 `
+            -Packager "$PWD/target/release/packager.exe" `
+            -Image $env:SMOKE_IMAGE `
+            -TimeoutSeconds ([int]$env:SMOKE_TIMEOUT_SECONDS) `
+            -EvidencePath "$PWD/artifacts/windows-wsl2-e2e.json"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: windows-wsl2-e2e-${{ runner.arch }}
+          path: artifacts/windows-wsl2-e2e.json
+          if-no-files-found: warn
+          retention-days: 90
