@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   resolve:
-    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false
+    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false || startsWith(github.event.release.tag_name, 'cli-v')
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -35,7 +35,8 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = release ]; then
             case "$RELEASE_TAG" in
               v*) VERSION="${RELEASE_TAG#v}" ;;
-              *) echo "Stable release tags must start with v." >&2; exit 1 ;;
+              cli-v*) VERSION="${RELEASE_TAG#cli-v}" ;;
+              *) echo "Release tags must start with v or cli-v." >&2; exit 1 ;;
             esac
           else
             VERSION="$INPUT_VERSION"

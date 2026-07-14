@@ -48,7 +48,7 @@ The npm launcher installs only the native package for the current machine: macOS
 
 Every release includes standalone `.tar.gz` and `.zip` archives plus `SHA256SUMS`.
 
-Once the first stable release is published, Packager's repository also acts as an automatically updated Homebrew tap and Scoop bucket:
+Packager's repository acts as an automatically updated Homebrew tap and Scoop bucket. These channels can advance from a credential-free CLI-only release without waiting for desktop signing:
 
 ```bash
 # macOS
@@ -60,7 +60,9 @@ scoop bucket add packager https://github.com/what256/packager
 scoop install packager/packager
 ```
 
-Publishing a non-prerelease GitHub release regenerates the checksum-pinned `Formula/packager.rb` and `bucket/packager.json` files from its four standalone CLI archives. Homebrew and Scoop therefore receive later Packager versions through their normal update commands. Each release also retains version-pinned `packager.rb` and `packager.json` assets for direct installation.
+Publishing a `cli-v*` CLI prerelease or an ordinary signed desktop release regenerates the checksum-pinned `Formula/packager.rb` and `bucket/packager.json` files from its four standalone CLI archives. Homebrew and Scoop therefore receive later Packager versions through their normal update commands. Each release also retains version-pinned `packager.rb` and `packager.json` assets for direct installation.
+
+CLI-only releases are GitHub prereleases so they cannot replace the ordinary `releases/latest` response consumed by desktop automatic updates. They are stable CLI distribution events: the same source version is built and executed on native macOS and Windows ARM64/x64 runners, then npm, Homebrew, and Scoop advance independently of Apple or Windows desktop-signing credentials.
 
 ### Build from source
 
@@ -235,7 +237,7 @@ cargo test --workspace
 cargo check -p packager-core -p packager-cli --target x86_64-pc-windows-msvc
 ```
 
-The CI workflow runs the full workspace on GitHub's native macOS and Windows runners for ARM64 and x64. The release workflow builds and signs both desktop architectures on each OS, builds four standalone CLIs, and generates package-manager manifests. When a stable release is published, the OIDC-only npm workflow publishes and verifies the five CLI packages, while a separate workflow validates the public CLI archives and advances the repository's Homebrew and Scoop channels.
+The CI workflow runs the full workspace on GitHub's native macOS and Windows runners for ARM64 and x64. The signed desktop release workflow builds both desktop architectures on each OS. A separate credential-free `cli-v*` workflow builds four standalone CLIs and publishes a GitHub prerelease; that event advances the OIDC-only npm packages plus the repository's validated Homebrew and Scoop channels. An ordinary signed desktop release can advance the same CLI channels as well.
 
 ## Publishing
 
@@ -257,6 +259,15 @@ Push a version tag only after CI passes:
 git tag v0.1.0
 git push origin v0.1.0
 ```
+
+To release only the CLI, npm packages, Homebrew formula, and Scoop manifest without desktop-signing credentials, use the matching source version with a namespaced tag:
+
+```bash
+git tag cli-v0.1.1
+git push origin cli-v0.1.1
+```
+
+The resulting GitHub release is deliberately a prerelease, while the npm and package-manager versions are normal releases. This preserves the desktop updater's `releases/latest` contract. The CLI release workflow explicitly dispatches the npm and package-manager workflows after uploading its assets, so publication does not depend on workflow-generated release events triggering other workflows.
 
 The tag, `Cargo.toml`, `tauri.conf.json`, and root `package.json` versions must match. Releases are created as drafts for human review. Publish them as ordinary releases—not prereleases—because desktop clients use GitHub's `releases/latest` endpoint.
 

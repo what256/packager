@@ -1,0 +1,129 @@
+name: Release Packager CLI
+
+on:
+  push:
+    tags: ["cli-v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            platform: darwin-arm64
+            executable: packager
+            archive: tar
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+            platform: darwin-x64
+            executable: packager
+            archive: tar
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            platform: win32-x64
+            executable: packager.exe
+            archive: zip
+          - target: aarch64-pc-windows-msvc
+            runner: windows-11-arm
+            platform: win32-arm64
+            executable: packager.exe
+            archive: zip
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+      - name: Verify CLI tag matches source versions
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#cli-v}"
+          node scripts/check-versions.mjs "$VERSION"
+      - run: cargo build --locked --release -p packager-cli --target ${{ matrix.target }}
+      - name: Stage standalone CLI archive
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#cli-v}"
+          binary="target/${{ matrix.target }}/release/${{ matrix.executable }}"
+          test "$("$binary" --version)" = "packager $VERSION"
+          mkdir -p dist/stage
+          cp "$binary" "dist/stage/${{ matrix.executable }}"
+          if [ "${{ matrix.archive }}" = tar ]; then
+            tar -C dist/stage -czf "dist/packager-cli-v${VERSION}-${{ matrix.platform }}.tar.gz" packager
+          else
+            (cd dist/stage && 7z a "../packager-cli-v${VERSION}-${{ matrix.platform }}.zip" packager.exe)
+          fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: standalone-cli-${{ matrix.platform }}
+          path: dist/packager-cli-*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-prerelease:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: standalone-cli-*
+          path: artifacts
+      - name: Validate and stage release assets
+        run: |
+          VERSION="${GITHUB_REF_NAME#cli-v}"
+          export VERSION
+          node scripts/check-versions.mjs "$VERSION"
+          mkdir release-assets
+          find artifacts -type f \( -name '*.tar.gz' -o -name '*.zip' \) -exec cp {} release-assets/ \;
+          node scripts/generate-package-manager-manifests.mjs \
+            "$GITHUB_REPOSITORY" "$VERSION" release-assets "$GITHUB_REF_NAME"
+          test "$(find release-assets -type f \( -name '*.tar.gz' -o -name '*.zip' \) | wc -l)" -eq 4
+          test "$(wc -l < release-assets/SHA256SUMS)" -eq 4
+          (cd release-assets && sha256sum --check SHA256SUMS)
+          ruby -c release-assets/packager.rb
+          jq -e \
+            '.version == env.VERSION and .architecture["64bit"].url and .architecture.arm64.url and .bin == "packager.exe"' \
+            release-assets/packager.json >/dev/null
+      - name: Publish credential-free CLI prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#cli-v}"
+          gh release create "$GITHUB_REF_NAME" \
+            --verify-tag \
+            --prerelease \
+            --title "Packager CLI v${VERSION}" \
+            --notes "Credential-free standalone Packager CLI release for npm, Homebrew, Scoop, and direct downloads. Desktop updater clients ignore CLI-only prereleases." \
+            release-assets/*
+          gh workflow run publish-npm.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f version="$VERSION"
+          gh workflow run package-manager-channels.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f tag="$GITHUB_REF_NAME" \
+            -f version="$VERSION" \
+            -f publish_channels=true

@@ -16,7 +16,7 @@ on:
         default: 0.1.0
         type: string
       publish_channels:
-        description: Update Formula/ and bucket/ on main (stable v* releases only)
+        description: Update Formula/ and bucket/ on main (v* or cli-v* releases)
         required: true
         default: false
         type: boolean
@@ -30,7 +30,7 @@ concurrency:
 
 jobs:
   generate:
-    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false
+    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false || startsWith(github.event.release.tag_name, 'cli-v')
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.release.outputs.tag }}
@@ -58,7 +58,8 @@ jobs:
             TAG="$RELEASE_TAG"
             case "$TAG" in
               v*) VERSION="${TAG#v}" ;;
-              *) echo "Stable release tags must start with v." >&2; exit 1 ;;
+              cli-v*) VERSION="${TAG#cli-v}" ;;
+              *) echo "Release tags must start with v or cli-v." >&2; exit 1 ;;
             esac
             PUBLISH=true
           else
@@ -73,11 +74,15 @@ jobs:
           fi
           if [ "$PUBLISH" = true ]; then
             case "$TAG" in
-              v*) ;;
-              *) echo "Only v* releases may update stable package-manager channels." >&2; exit 1 ;;
+              v*|cli-v*) ;;
+              *) echo "Only v* or cli-v* releases may update package-manager channels." >&2; exit 1 ;;
             esac
             test "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = false
-            test "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq .isPrerelease)" = false
+            if [[ "$TAG" = cli-v* ]]; then
+              test "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq .isPrerelease)" = true
+            else
+              test "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq .isPrerelease)" = false
+            fi
           fi
 
           {
