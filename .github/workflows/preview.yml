@@ -40,13 +40,21 @@ jobs:
       - run: npm ci
       - run: node scripts/configure-preview-build.mjs
       - run: npm run tauri build -- --target ${{ matrix.target }}
-      - name: Add unsigned preview notice
+      - name: Stage preview installers
         shell: bash
-        run: cp docs/PREVIEW-NOTICE.txt "target/${{ matrix.target }}/release/bundle/PREVIEW-NOTICE.txt"
+        run: |
+          mkdir -p preview-desktop
+          if [ "${{ runner.os }}" = macOS ]; then
+            cp target/${{ matrix.target }}/release/bundle/dmg/*.dmg preview-desktop/
+          else
+            cp target/${{ matrix.target }}/release/bundle/nsis/*.exe preview-desktop/
+            cp target/${{ matrix.target }}/release/bundle/msi/*.msi preview-desktop/
+          fi
+          cp docs/PREVIEW-NOTICE.txt preview-desktop/PREVIEW-NOTICE.txt
       - uses: actions/upload-artifact@v7
         with:
           name: UNSIGNED-preview-desktop-${{ matrix.platform }}
-          path: target/${{ matrix.target }}/release/bundle/**
+          path: preview-desktop/*
           if-no-files-found: error
           retention-days: 14
 
