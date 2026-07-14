@@ -99,11 +99,24 @@ jobs:
             package_path="$1"
             package_name=$(node -p "require('./${package_path}/package.json').name")
             package_version=$(node -p "require('./${package_path}/package.json').version")
-            if npm view "${package_name}@${package_version}" version >/dev/null 2>&1; then
+            if test "$(npm view --prefer-online "${package_name}@${package_version}" version 2>/dev/null || true)" = "${package_version}"; then
               echo "${package_name}@${package_version} is already published; skipping."
-            else
-              npm publish --access public --provenance "./${package_path}"
+              return
             fi
+            if npm publish --access public --provenance "./${package_path}"; then
+              return
+            fi
+
+            echo "Publish returned an error; checking for a delayed registry write."
+            for attempt in $(seq 1 60); do
+              if test "$(npm view --prefer-online "${package_name}@${package_version}" version 2>/dev/null || true)" = "${package_version}"; then
+                echo "${package_name}@${package_version} is present in the registry."
+                return
+              fi
+              echo "Waiting for npm registry propagation (attempt ${attempt}/60)."
+              sleep 10
+            done
+            return 1
           }
 
           for package in npm/packager-cli-darwin-arm64 npm/packager-cli-darwin-x64 npm/packager-cli-win32-arm64 npm/packager-cli-win32-x64; do
@@ -112,10 +125,28 @@ jobs:
           publish_package npm/packager-cli
       - name: Verify registry metadata
         run: |
-          for package_path in npm/packager-cli-darwin-arm64 npm/packager-cli-darwin-x64 npm/packager-cli-win32-arm64 npm/packager-cli-win32-x64 npm/packager-cli; do
+          packages="npm/packager-cli-darwin-arm64 npm/packager-cli-darwin-x64 npm/packager-cli-win32-arm64 npm/packager-cli-win32-x64 npm/packager-cli"
+          for attempt in $(seq 1 60); do
+            all_ready=true
+            for package_path in $packages; do
+              package_name=$(node -p "require('./${package_path}/package.json').name")
+              if test "$(npm view --prefer-online "${package_name}@${{ inputs.version }}" version 2>/dev/null || true)" != "${{ inputs.version }}"; then
+                all_ready=false
+              fi
+            done
+            if $all_ready; then
+              break
+            fi
+            if test "$attempt" = 60; then
+              echo "npm registry did not expose every package within 10 minutes." >&2
+              exit 1
+            fi
+            echo "Waiting for npm registry propagation (attempt ${attempt}/60)."
+            sleep 10
+          done
+          for package_path in $packages; do
             package_name=$(node -p "require('./${package_path}/package.json').name")
-            test "$(npm view "${package_name}@${{ inputs.version }}" version)" = "${{ inputs.version }}"
-            test "$(npm view "${package_name}@${{ inputs.version }}" repository.url)" = "git+https://github.com/${GITHUB_REPOSITORY}.git"
+            test "$(npm view --prefer-online "${package_name}@${{ inputs.version }}" repository.url)" = "git+https://github.com/${GITHUB_REPOSITORY}.git"
           done
 
   verify-install:
