@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: packager-real-macos-runtime-${{ runner.arch }}
+  group: packager-real-macos-runtime
   cancel-in-progress: false
 
 jobs:
