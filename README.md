@@ -112,6 +112,8 @@ On Windows, Packager does not install Docker or Podman Desktop. It stores the po
 
 On macOS, Packager does not activate or modify the user's global Docker context. Runtime tools, cache, and Docker configuration remain under Packager's Application Support directory. Colima and Lima VM state uses a short, per-installation directory under `~/.packager/r/` so Lima's Unix sockets remain below macOS's fixed path-length limit. `packager runtime uninstall` removes both locations and the private VM.
 
+The word “Docker” can still appear in diagnostics because Compose talks to the private container engine through the Docker-compatible API. On macOS that connection is a local Unix socket under `~/.packager/r/`; it is not Docker Desktop's `~/.docker/run/docker.sock`, it is not exposed to the internet, and users do not need to install Docker. The first app launch takes longer because Packager downloads the pinned runtime once and then downloads that app's container images.
+
 ### Real macOS release gate
 
 Run the full shared-engine lifecycle against a disposable nginx workload on a Mac with Apple virtualization support:
@@ -152,6 +154,7 @@ Maintainers can register a dedicated GitHub Actions runner with the labels `wind
 - Dynamic loopback ports with collision repair
 - Secrets in macOS Keychain or Windows Credential Manager
 - Start, stop, readiness detection, logs, deep-link launchers, and automatic image updates
+- Native launchers use a package's own `icon.icns` on macOS or `icon.ico` on Windows, with the Packager icon only as a fallback
 - Signed desktop self-updates; signed/notarized macOS and Authenticode-signed Windows release configuration with post-build signature, timestamp, and updater-artifact verification
 - Blocking of privileged containers, host namespaces, engine-socket mounts, devices/capabilities, unrestricted host binds, and non-loopback published ports
 
@@ -163,8 +166,12 @@ A package is a readable, shareable folder:
 my-app/
 ├── packager.yml
 ├── compose.yml
+├── icon.icns              # optional macOS launcher icon
+├── icon.ico               # optional Windows launcher icon
 └── optional build context files
 ```
+
+When a platform icon is present, the generated native launcher uses it. Otherwise Packager's own icon is used as a fallback.
 
 Minimal recipe:
 

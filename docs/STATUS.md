@@ -1,6 +1,6 @@
 # Project status
 
-Last reviewed: 2026-07-14
+Last reviewed: 2026-07-18
 
 Packager is a cross-platform alpha. The CLI is publicly distributed; desktop builds remain unsigned development previews until the deferred Apple and Windows credentials are available.
 
@@ -14,6 +14,7 @@ Packager is a cross-platform alpha. The CLI is publicly distributed; desktop bui
 - macOS ARM64/x64 and Windows ARM64/x64 builds
 - Package analysis, build, import, install, start, readiness, logs, update, stop, and uninstall
 - Managed private runtimes that do not require Docker Desktop
+- Dedicated packaged-app launchers with package-specific icons and hidden Packager startup UI
 
 ## Verification record
 
@@ -26,6 +27,8 @@ Packager is a cross-platform alpha. The CLI is publicly distributed; desktop bui
 | Real macOS workload | [`evidence/macos-runtime-e2e-2026-07-14.json`](evidence/macos-runtime-e2e-2026-07-14.json) | nginx lifecycle, updates, persistence, and cleanup passed |
 
 The retained macOS evidence was produced from runtime commit `441df0f` and has SHA-256 `55793ec419fa5ef93116171842d732089ab7b61a98ed8d22a40187f86f3bcadb`.
+
+On 2026-07-18, the current macOS desktop build also completed a manual Open Notebook gate from its generated launcher: it installed and started the private Colima/Lima runtime, pulled both images, migrated the database, returned HTTP successfully on a dynamic loopback port, displayed only the `Open Notebook` window, and used the official Open Notebook icon. Existing app data was preserved while the older preview definition and launcher were refreshed.
 
 ## Security baseline
 

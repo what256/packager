@@ -19,6 +19,10 @@ use uuid::Uuid;
 
 const OPEN_NOTEBOOK_RECIPE: &str = include_str!("../packages/open-notebook/packager.yml");
 const OPEN_NOTEBOOK_COMPOSE: &str = include_str!("../packages/open-notebook/compose.yml");
+#[cfg(target_os = "macos")]
+const OPEN_NOTEBOOK_ICON: &[u8] = include_bytes!("../packages/open-notebook/icon.icns");
+#[cfg(target_os = "windows")]
+const OPEN_NOTEBOOK_ICON: &[u8] = include_bytes!("../packages/open-notebook/icon.ico");
 
 #[derive(Clone)]
 struct Instance {
@@ -437,7 +441,7 @@ fn launcher_bundle(recipe: &PackageRecipe) -> Option<PathBuf> {
     Some(
         PathBuf::from(home)
             .join("Applications")
-            .join(format!("{} (Packager).app", launcher_name(&recipe.name))),
+            .join(format!("{}.app", launcher_name(&recipe.name))),
     )
 }
 
@@ -447,7 +451,7 @@ fn launcher_bundle(recipe: &PackageRecipe) -> Option<PathBuf> {
     Some(
         PathBuf::from(app_data)
             .join("Microsoft/Windows/Start Menu/Programs/Packager Apps")
-            .join(format!("{} (Packager).lnk", launcher_name(&recipe.name))),
+            .join(format!("{}.lnk", launcher_name(&recipe.name))),
     )
 }
 
@@ -472,7 +476,10 @@ fn write_launcher_bundle(
         .map_err(|error| format!("Cannot create launcher app: {error}"))?;
 
     let executable = executable_dir.join("launch");
-    let script = format!("#!/bin/sh\n/usr/bin/open 'packager://open/{}'\n", recipe.id);
+    let script = format!(
+        "#!/bin/sh\n/usr/bin/open -b dev.packager.desktop 'packager://open/{}'\n",
+        recipe.id
+    );
     fs::write(&executable, script)
         .and_then(|_| fs::set_permissions(&executable, fs::Permissions::from_mode(0o755)))
         .map_err(|error| format!("Cannot write launcher executable: {error}"))?;
@@ -507,9 +514,18 @@ fn write_launcher_bundle(
 }
 
 #[cfg(target_os = "macos")]
-fn install_launcher(recipe: &PackageRecipe, launcher_icon: Option<&[u8]>) -> Result<(), String> {
+fn install_launcher(
+    recipe: &PackageRecipe,
+    definition_dir: &Path,
+    fallback_icon: Option<&[u8]>,
+) -> Result<(), String> {
     let bundle = launcher_bundle(recipe).ok_or("Cannot locate the user home directory")?;
-    write_launcher_bundle(recipe, &bundle, launcher_icon.unwrap_or_default())?;
+    let package_icon = fs::read(definition_dir.join("icon.icns")).ok();
+    let launcher_icon = package_icon
+        .as_deref()
+        .or(fallback_icon)
+        .unwrap_or_default();
+    write_launcher_bundle(recipe, &bundle, launcher_icon)?;
     let _ = Command::new("/usr/bin/codesign")
         .args(["--force", "--deep", "--sign", "-"])
         .arg(&bundle)
@@ -518,7 +534,11 @@ fn install_launcher(recipe: &PackageRecipe, launcher_icon: Option<&[u8]>) -> Res
 }
 
 #[cfg(target_os = "windows")]
-fn install_launcher(recipe: &PackageRecipe, _launcher_icon: Option<&[u8]>) -> Result<(), String> {
+fn install_launcher(
+    recipe: &PackageRecipe,
+    definition_dir: &Path,
+    _fallback_icon: Option<&[u8]>,
+) -> Result<(), String> {
     let shortcut = launcher_bundle(recipe).ok_or("Cannot locate the Windows Start Menu")?;
     let parent = shortcut
         .parent()
@@ -527,12 +547,14 @@ fn install_launcher(recipe: &PackageRecipe, _launcher_icon: Option<&[u8]>) -> Re
         .map_err(|error| format!("Cannot create Packager Apps Start Menu folder: {error}"))?;
     let executable = std::env::current_exe()
         .map_err(|error| format!("Cannot locate the Packager executable: {error}"))?;
+    let icon = definition_dir.join("icon.ico");
     let script = concat!(
         "$shell = New-Object -ComObject WScript.Shell; ",
         "$link = $shell.CreateShortcut($env:PACKAGER_SHORTCUT); ",
         "$link.TargetPath = $env:PACKAGER_EXE; ",
         "$link.Arguments = $env:PACKAGER_ARGUMENTS; ",
         "$link.WorkingDirectory = Split-Path $env:PACKAGER_EXE; ",
+        "if (Test-Path $env:PACKAGER_ICON) { $link.IconLocation = $env:PACKAGER_ICON }; ",
         "$link.Save()"
     );
     let output = Command::new("powershell.exe")
@@ -543,6 +565,7 @@ fn install_launcher(recipe: &PackageRecipe, _launcher_icon: Option<&[u8]>) -> Re
             "PACKAGER_ARGUMENTS",
             format!("\"packager://open/{}\"", recipe.id),
         )
+        .env("PACKAGER_ICON", icon)
         .output()
         .map_err(|error| format!("Cannot create Windows app shortcut: {error}"))?;
     if output.status.success() {
@@ -556,7 +579,11 @@ fn install_launcher(recipe: &PackageRecipe, _launcher_icon: Option<&[u8]>) -> Re
 }
 
 #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
-fn install_launcher(_recipe: &PackageRecipe, _launcher_icon: Option<&[u8]>) -> Result<(), String> {
+fn install_launcher(
+    _recipe: &PackageRecipe,
+    _definition_dir: &Path,
+    _fallback_icon: Option<&[u8]>,
+) -> Result<(), String> {
     Ok(())
 }
 
@@ -612,6 +639,12 @@ pub fn install(engine: &Engine, id: &str) -> Result<ActionResult, String> {
     fs::write(definition_dir.join("packager.yml"), OPEN_NOTEBOOK_RECIPE)
         .and_then(|_| fs::write(definition_dir.join("compose.yml"), OPEN_NOTEBOOK_COMPOSE))
         .map_err(|error| format!("Cannot install package definition: {error}"))?;
+    #[cfg(target_os = "macos")]
+    fs::write(definition_dir.join("icon.icns"), OPEN_NOTEBOOK_ICON)
+        .map_err(|error| format!("Cannot install package icon: {error}"))?;
+    #[cfg(target_os = "windows")]
+    fs::write(definition_dir.join("icon.ico"), OPEN_NOTEBOOK_ICON)
+        .map_err(|error| format!("Cannot install package icon: {error}"))?;
 
     let existing_state = fs::read_to_string(root.join("state.json"))
         .ok()
@@ -619,7 +652,7 @@ pub fn install(engine: &Engine, id: &str) -> Result<ActionResult, String> {
     let state = prepare_state(&recipe, existing_state)?;
     write_json(&root.join("state.json"), &state)?;
     if engine.launchers_enabled() {
-        install_launcher(&recipe, engine.launcher_icon())?;
+        install_launcher(&recipe, &definition_dir, engine.launcher_icon())?;
     }
 
     Ok(ActionResult {
@@ -630,6 +663,18 @@ pub fn install(engine: &Engine, id: &str) -> Result<ActionResult, String> {
             recipe.name
         ),
     })
+}
+
+/// Refresh bundled package definitions and native launchers while preserving app data.
+/// This also migrates installations created by older Packager previews.
+pub fn refresh_installed_packages(engine: &Engine) -> Result<(), String> {
+    let root = apps_root(engine)?;
+    for recipe in builtin_recipes()? {
+        if root.join(&recipe.id).join("state.json").is_file() {
+            install(engine, &recipe.id)?;
+        }
+    }
+    Ok(())
 }
 
 fn compose_output(instance: &Instance, arguments: &[&str]) -> Result<Output, String> {
@@ -1041,7 +1086,7 @@ pub fn import_package(engine: &Engine, source_dir: &str) -> Result<ActionResult,
     let state = prepare_state(&recipe, None)?;
     write_json(&root.join("state.json"), &state)?;
     if engine.launchers_enabled() {
-        install_launcher(&recipe, engine.launcher_icon())?;
+        install_launcher(&recipe, &definition, engine.launcher_icon())?;
     }
     Ok(ActionResult {
         id: recipe.id,
@@ -1109,6 +1154,7 @@ mod tests {
         write_launcher_bundle(&recipe, &bundle, b"test-icon").expect("launcher should be written");
         let script = fs::read_to_string(bundle.join("Contents/MacOS/launch"))
             .expect("launcher executable should be readable");
+        assert!(script.contains("open -b dev.packager.desktop"));
         assert!(script.contains("packager://open/open-notebook"));
         assert!(bundle.join("Contents/Info.plist").is_file());
         assert!(bundle.join("Contents/Resources/AppIcon.icns").is_file());

@@ -197,6 +197,7 @@ function App() {
         const id = parsed.pathname.replace(/^\//, "");
         if (!id) continue;
 
+        await getCurrentWindow().hide();
         setView("library");
         setBusy(id);
         setNotice(`Starting ${id.replace(/-/g, " ")}…`);
@@ -220,6 +221,8 @@ function App() {
           await getCurrentWindow().hide();
         } catch (reason) {
           setError(String(reason));
+          await getCurrentWindow().show();
+          await getCurrentWindow().setFocus();
         } finally {
           setBusy(null);
         }

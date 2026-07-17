@@ -65,6 +65,8 @@ packager runtime uninstall
 
 `--delete-data` and `runtime uninstall` are destructive. Stop and check the identifier before using them.
 
+If an error mentions `~/.docker/run/docker.sock`, the running desktop app or generated launcher is stale: current Packager uses its own socket below `~/.packager/r/`. Install the current Packager build and open it once so bundled package definitions and launchers refresh. Do not install Docker Desktop as a workaround. A first launch may legitimately take several minutes while the private runtime and large app images download.
+
 ## Repository commands you will use most
 
 ```bash

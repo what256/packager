@@ -34,24 +34,10 @@ fn deep_link_id(url: &Url) -> Option<String> {
     }
 }
 
-fn launch_deep_link(app: AppHandle, id: String) {
-    tauri::async_runtime::spawn(async move {
-        let start_app = app.clone();
-        let start_id = id.clone();
-        let started = tauri::async_runtime::spawn_blocking(move || {
-            packager_core::start(&engine(&start_app)?, &start_id)
-        })
-        .await;
-        if !matches!(started, Ok(Ok(_))) {
-            return;
-        }
-        for _ in 0..120 {
-            if open_app_window(app.clone(), id.clone()).is_ok() {
-                return;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        }
-    });
+fn hide_main_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.hide();
+    }
 }
 
 async fn blocking<F, T>(operation: F) -> Result<T, String>
@@ -201,19 +187,18 @@ pub fn run() {
             #[cfg(desktop)]
             app.handle()
                 .plugin(tauri_plugin_updater::Builder::new().build())?;
+            if let Ok(packager) = engine(app.handle()) {
+                let _ = packager_core::refresh_installed_packages(&packager);
+            }
             let handle = app.handle().clone();
             app.deep_link().on_open_url(move |event| {
-                for url in event.urls() {
-                    if let Some(id) = deep_link_id(&url) {
-                        launch_deep_link(handle.clone(), id);
-                    }
+                if event.urls().iter().any(|url| deep_link_id(url).is_some()) {
+                    hide_main_window(&handle);
                 }
             });
             if let Ok(Some(urls)) = app.deep_link().get_current() {
-                for url in urls {
-                    if let Some(id) = deep_link_id(&url) {
-                        launch_deep_link(app.handle().clone(), id);
-                    }
+                if urls.iter().any(|url| deep_link_id(url).is_some()) {
+                    hide_main_window(app.handle());
                 }
             }
             Ok(())

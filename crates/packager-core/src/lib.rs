@@ -17,7 +17,8 @@ pub use managed_runtime::{
 pub use model::*;
 pub use runtime::{
     app_url, automatic_updates, catalog, import_package, install, list_apps, logs,
-    set_automatic_updates, start, stop, system_status, uninstall, update,
+    refresh_installed_packages, set_automatic_updates, start, stop, system_status, uninstall,
+    update,
 };
 
 /// Filesystem roots are explicit so every client uses the same engine without

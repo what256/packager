@@ -12,6 +12,9 @@ This file records user-visible Packager milestones. Dates use UTC. The current r
 
 ### Fixed
 
+- Packaged-app launchers now use their package-specific macOS/Windows icons and refresh older bundled installations without deleting app data.
+- Opening a packaged app no longer runs duplicate start handlers or leaves Packager's main window visible; launcher errors reveal the main window only when user attention is required.
+- macOS launchers target the installed Packager bundle explicitly so stale development URL-handler registrations cannot intercept them.
 - macOS runtime state now uses a short per-installation path so Lima sockets stay below Darwin's fixed Unix-socket path limit.
 - Managed-runtime removal verifies that Colima's background daemon and VM stop before deleting state.
 - Windows removal verifies that the private Podman/WSL2 machine is removed before deleting its tools.
