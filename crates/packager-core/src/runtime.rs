@@ -1107,6 +1107,9 @@ mod tests {
         assert_eq!(recipe.ui.port.as_deref(), Some("web"));
         assert_eq!(recipe.runtime.ports.len(), 2);
         assert_eq!(recipe.secrets[0].key, "OPEN_NOTEBOOK_ENCRYPTION_KEY");
+        assert!(OPEN_NOTEBOOK_COMPOSE.contains(
+            "API_URL: http://127.0.0.1:${PACKAGER_API_PORT:?PACKAGER_API_PORT is required}"
+        ));
         let compose = std::env::temp_dir().join(format!("packager-compose-{}.yml", Uuid::new_v4()));
         fs::write(&compose, OPEN_NOTEBOOK_COMPOSE).expect("compose should be writable");
         validate_compose_security(&compose).expect("bundled compose should be safe");

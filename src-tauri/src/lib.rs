@@ -121,6 +121,9 @@ fn open_app_window(app: AppHandle, id: String) -> Result<ActionResult, String> {
         .map_err(|error| format!("Invalid packaged app URL: {error}"))?;
     let label = format!("app-{id}");
     if let Some(window) = app.get_webview_window(&label) {
+        window
+            .navigate(url.clone())
+            .map_err(|error| format!("Cannot reload packaged app: {error}"))?;
         window.show().map_err(|error| error.to_string())?;
         window.set_focus().map_err(|error| error.to_string())?;
     } else {
