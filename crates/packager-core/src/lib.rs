@@ -1,6 +1,7 @@
 //! Tauri-independent Packager engine used by both the desktop app and CLI.
 
 mod builder;
+mod icon;
 mod managed_runtime;
 mod model;
 mod runtime;
