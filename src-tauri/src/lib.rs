@@ -2,21 +2,35 @@ use packager_core::{
     ActionResult, AppSummary, BuilderAnalysis, BuilderRequest, CatalogEntry, Engine,
     ManagedRuntimeStatus, SystemStatus,
 };
+use std::fs;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_deep_link::DeepLinkExt;
 use url::Url;
 
-fn engine(app: &AppHandle) -> Result<Engine, String> {
-    let data = app
-        .path()
-        .app_data_dir()
-        .map_err(|error| format!("Cannot locate Packager data: {error}"))?;
-    let cache = app
-        .path()
-        .app_cache_dir()
-        .map_err(|error| format!("Cannot locate Packager cache: {error}"))?;
-    Engine::desktop(data, cache)
-        .map(|engine| engine.with_launcher_icon(include_bytes!("../icons/icon.icns").to_vec()))
+fn engine(_app: &AppHandle) -> Result<Engine, String> {
+    Engine::from_environment().map(|engine| {
+        engine
+            .with_launcher_installation()
+            .with_launcher_icon(include_bytes!("../icons/icon.icns").to_vec())
+    })
+}
+
+fn launcher_app_id() -> Option<String> {
+    let executable = std::env::current_exe().ok()?;
+    let marker = executable
+        .parent()?
+        .parent()?
+        .join("Resources/packager-launcher-id");
+    let id = fs::read_to_string(marker).ok()?.trim().to_owned();
+    if !id.is_empty()
+        && id.chars().all(|character| {
+            character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
+        })
+    {
+        Some(id)
+    } else {
+        None
+    }
 }
 
 fn deep_link_id(url: &Url) -> Option<String> {
@@ -63,6 +77,11 @@ async fn get_apps(app: AppHandle) -> Result<Vec<AppSummary>, String> {
 #[tauri::command]
 async fn get_system_status(app: AppHandle) -> Result<SystemStatus, String> {
     blocking(move || packager_core::system_status(&engine(&app)?)).await
+}
+
+#[tauri::command]
+fn get_launcher_app_id() -> Option<String> {
+    launcher_app_id()
 }
 
 #[tauri::command]
@@ -190,7 +209,10 @@ pub fn run() {
             #[cfg(desktop)]
             app.handle()
                 .plugin(tauri_plugin_updater::Builder::new().build())?;
-            if let Ok(packager) = engine(app.handle()) {
+            let is_launcher = launcher_app_id().is_some();
+            if is_launcher {
+                hide_main_window(app.handle());
+            } else if let Ok(packager) = engine(app.handle()) {
                 let _ = packager_core::refresh_installed_packages(&packager);
             }
             let handle = app.handle().clone();
@@ -210,6 +232,7 @@ pub fn run() {
             get_catalog,
             get_apps,
             get_system_status,
+            get_launcher_app_id,
             install_managed_runtime,
             start_managed_runtime,
             stop_managed_runtime,

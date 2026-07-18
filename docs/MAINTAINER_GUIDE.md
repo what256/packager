@@ -67,6 +67,8 @@ packager runtime uninstall
 
 If an error mentions `~/.docker/run/docker.sock`, the running desktop app or generated launcher is stale: current Packager uses its own socket below `~/.packager/r/`. Install the current Packager build and open it once so bundled package definitions and launchers refresh. Do not install Docker Desktop as a workaround. A first launch may legitimately take several minutes while the private runtime and large app images download.
 
+On macOS, generated apps are full native bundles in `~/Applications`, not aliases. They carry the package name, identifier, and icon in Finder and the Dock while sharing Packager's data at `~/Library/Application Support/dev.packager.desktop`. If Finder shows extra Packager copies, they are usually indexed `.app` build artifacts under a repository `target` directory; only `~/Applications/Packager.app` and the generated package apps are installations.
+
 ## Repository commands you will use most
 
 ```bash

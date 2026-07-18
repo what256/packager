@@ -514,6 +514,105 @@ fn write_launcher_bundle(
 }
 
 #[cfg(target_os = "macos")]
+fn current_app_bundle() -> Option<PathBuf> {
+    let executable = std::env::current_exe().ok()?;
+    let contents = executable.parent()?.parent()?;
+    if contents.file_name()?.to_str()? != "Contents" {
+        return None;
+    }
+    let bundle = contents.parent()?;
+    (bundle.extension()?.to_str()? == "app").then(|| bundle.to_path_buf())
+}
+
+#[cfg(target_os = "macos")]
+fn plist_replace(plist: &Path, key: &str, value: &str) -> Result<(), String> {
+    let output = Command::new("/usr/bin/plutil")
+        .args(["-replace", key, "-string", value])
+        .arg(plist)
+        .output()
+        .map_err(|error| format!("Cannot update launcher metadata: {error}"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Cannot update launcher metadata: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn clone_launcher_bundle(
+    recipe: &PackageRecipe,
+    source: &Path,
+    bundle: &Path,
+    launcher_icon: &[u8],
+) -> Result<(), String> {
+    let parent = bundle.parent().ok_or("Invalid launcher app path")?;
+    fs::create_dir_all(parent)
+        .map_err(|error| format!("Cannot create Applications directory: {error}"))?;
+    let staging = parent.join(format!(".packager-launcher-{}.app", Uuid::new_v4()));
+    let install = || -> Result<(), String> {
+        let output = Command::new("/usr/bin/ditto")
+            .arg(source)
+            .arg(&staging)
+            .output()
+            .map_err(|error| format!("Cannot copy Packager application: {error}"))?;
+        if !output.status.success() {
+            return Err(format!(
+                "Cannot copy Packager application: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ));
+        }
+
+        let contents = staging.join("Contents");
+        let resources = contents.join("Resources");
+        let plist = contents.join("Info.plist");
+        let display_name = launcher_name(&recipe.name);
+        let bundle_id = format!("dev.packager.launcher.{}", recipe.id.replace('-', "."));
+        plist_replace(&plist, "CFBundleDisplayName", &display_name)?;
+        plist_replace(&plist, "CFBundleName", &display_name)?;
+        plist_replace(&plist, "CFBundleIdentifier", &bundle_id)?;
+        plist_replace(&plist, "CFBundleIconFile", "AppIcon")?;
+        let _ = Command::new("/usr/bin/plutil")
+            .args(["-remove", "CFBundleURLTypes"])
+            .arg(&plist)
+            .output();
+        fs::write(resources.join("packager-launcher-id"), &recipe.id)
+            .map_err(|error| format!("Cannot identify launcher application: {error}"))?;
+        if !launcher_icon.is_empty() {
+            fs::write(resources.join("AppIcon.icns"), launcher_icon)
+                .map_err(|error| format!("Cannot write launcher icon: {error}"))?;
+        }
+
+        let output = Command::new("/usr/bin/codesign")
+            .args(["--force", "--deep", "--sign", "-"])
+            .arg(&staging)
+            .output()
+            .map_err(|error| format!("Cannot sign launcher application: {error}"))?;
+        if !output.status.success() {
+            return Err(format!(
+                "Cannot sign launcher application: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ));
+        }
+        if bundle.exists() {
+            fs::remove_dir_all(bundle)
+                .map_err(|error| format!("Cannot replace launcher application: {error}"))?;
+        }
+        fs::rename(&staging, bundle)
+            .map_err(|error| format!("Cannot install launcher application: {error}"))?;
+        Ok(())
+    };
+
+    let result = install();
+    if staging.exists() {
+        let _ = fs::remove_dir_all(&staging);
+    }
+    result
+}
+
+#[cfg(target_os = "macos")]
 fn install_launcher(
     recipe: &PackageRecipe,
     definition_dir: &Path,
@@ -525,11 +624,15 @@ fn install_launcher(
         .as_deref()
         .or(fallback_icon)
         .unwrap_or_default();
-    write_launcher_bundle(recipe, &bundle, launcher_icon)?;
-    let _ = Command::new("/usr/bin/codesign")
-        .args(["--force", "--deep", "--sign", "-"])
-        .arg(&bundle)
-        .output();
+    if let Some(source) = current_app_bundle().filter(|source| source != &bundle) {
+        clone_launcher_bundle(recipe, &source, &bundle, launcher_icon)?;
+    } else {
+        write_launcher_bundle(recipe, &bundle, launcher_icon)?;
+        let _ = Command::new("/usr/bin/codesign")
+            .args(["--force", "--deep", "--sign", "-"])
+            .arg(&bundle)
+            .output();
+    }
     Ok(())
 }
 
@@ -1162,5 +1265,40 @@ mod tests {
         assert!(bundle.join("Contents/Info.plist").is_file());
         assert!(bundle.join("Contents/Resources/AppIcon.icns").is_file());
         fs::remove_dir_all(bundle).expect("launcher test bundle should be removable");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn cloned_launcher_has_its_own_native_identity() {
+        let recipe = parse_recipe(OPEN_NOTEBOOK_RECIPE).expect("recipe should parse");
+        let root = std::env::temp_dir().join(format!("packager-clone-test-{}", Uuid::new_v4()));
+        let source = root.join("Packager.app");
+        let bundle = root.join("Open Notebook.app");
+        write_launcher_bundle(&recipe, &source, b"source-icon")
+            .expect("source app should be written");
+        clone_launcher_bundle(&recipe, &source, &bundle, b"open-notebook-icon")
+            .expect("native launcher should be cloned");
+
+        assert_eq!(
+            fs::read_to_string(bundle.join("Contents/Resources/packager-launcher-id"))
+                .expect("launcher marker should be readable"),
+            "open-notebook"
+        );
+        assert_eq!(
+            fs::read(bundle.join("Contents/Resources/AppIcon.icns"))
+                .expect("launcher icon should be readable"),
+            b"open-notebook-icon"
+        );
+        assert!(bundle.join("Contents/MacOS/launch").is_file());
+        let identifier = Command::new("/usr/bin/plutil")
+            .args(["-extract", "CFBundleIdentifier", "raw", "-o", "-"])
+            .arg(bundle.join("Contents/Info.plist"))
+            .output()
+            .expect("launcher metadata should be readable");
+        assert_eq!(
+            String::from_utf8_lossy(&identifier.stdout).trim(),
+            "dev.packager.launcher.open.notebook"
+        );
+        fs::remove_dir_all(root).expect("launcher test directory should be removable");
     }
 }
