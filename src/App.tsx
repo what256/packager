@@ -18,6 +18,9 @@ type AppSummary = {
   automaticUpdates: boolean;
   url: string;
   lastUpdateCheck: number | null;
+  iconDataUrl: string | null;
+  originalIconDataUrl: string | null;
+  customIcon: boolean;
 };
 
 type CatalogEntry = {
@@ -31,6 +34,7 @@ type CatalogEntry = {
   memoryMb: number;
   diskMb: number;
   installed: boolean;
+  iconDataUrl: string | null;
 };
 
 type SystemStatus = {
@@ -65,6 +69,7 @@ type BuilderAnalysis = {
 
 type SourceKind = "compose" | "image" | "github";
 type IconMode = "detected" | "created" | "uploaded";
+type LibraryIconMode = "current" | "original" | "created" | "uploaded";
 
 const iconColors = ["#29563a", "#245a72", "#5b3f86", "#8a472f", "#8b6723", "#353b48"];
 
@@ -155,6 +160,7 @@ const glyphs: Record<string, React.ReactNode> = {
   shield: <><path d="M12 3 5 6v5c0 4.4 2.9 8.4 7 10 4.1-1.6 7-5.6 7-10V6z"/><path d="m9 12 2 2 4-4"/></>,
   folder: <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>,
   spark: <><path d="m12 3 1.4 4.1L17 9l-3.6 1.9L12 15l-1.4-4.1L7 9l3.6-1.9z"/><path d="m18 15 .8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z"/></>,
+  image: <><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m4 17 5-4 3 3 3-3 5 4"/></>,
   close: <path d="m7 7 10 10M17 7 7 17"/>,
   chevron: <path d="m9 6 6 6-6 6"/>,
 };
@@ -169,6 +175,11 @@ function Icon({ name, size = 20 }: { name: string; size?: number }) {
 
 function AppMark({ small = false }: { small?: boolean }) {
   return <div className={`app-mark ${small ? "small" : ""}`}><span>O</span><i /></div>;
+}
+
+function AppLogo({ src, name, catalog = false }: { src: string | null; name: string; catalog?: boolean }) {
+  if (!src) return <AppMark />;
+  return <img className={catalog ? "catalog-logo" : "app-logo"} src={src} alt={`${name} logo`} />;
 }
 
 function statusLabel(status: string) {
@@ -193,6 +204,11 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [logs, setLogs] = useState<{ name: string; output: string } | null>(null);
+  const [logoEditor, setLogoEditor] = useState<AppSummary | null>(null);
+  const [libraryIconMode, setLibraryIconMode] = useState<LibraryIconMode>("current");
+  const [libraryUploadedIcon, setLibraryUploadedIcon] = useState<string | null>(null);
+  const [libraryIconColor, setLibraryIconColor] = useState(iconColors[0]);
+  const [libraryIconText, setLibraryIconText] = useState("");
   const [importPath, setImportPath] = useState("");
   const [sourceKind, setSourceKind] = useState<SourceKind>("compose");
   const [builderSource, setBuilderSource] = useState("");
@@ -212,6 +228,7 @@ function App() {
   const didCheckPackagerUpdate = useRef(false);
   const handledLinks = useRef(new Set<string>());
   const iconInput = useRef<HTMLInputElement>(null);
+  const libraryIconInput = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async (quiet = false) => {
     try {
@@ -383,6 +400,50 @@ function App() {
     }
   }
 
+  function showLogoEditor(app: AppSummary) {
+    setMenuFor(null);
+    setLogoEditor(app);
+    setLibraryIconMode("current");
+    setLibraryUploadedIcon(null);
+    setLibraryIconColor(iconColors[0]);
+    setLibraryIconText("");
+  }
+
+  async function chooseLibraryIcon(file: File | undefined) {
+    if (!file) return;
+    setError(null);
+    try {
+      setLibraryUploadedIcon(await uploadedIconData(file));
+      setLibraryIconMode("uploaded");
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      if (libraryIconInput.current) libraryIconInput.current.value = "";
+    }
+  }
+
+  async function saveLibraryIcon() {
+    if (!logoEditor || libraryIconMode === "current") return;
+    const iconData = libraryIconMode === "original"
+      ? null
+      : libraryIconMode === "uploaded"
+        ? libraryUploadedIcon
+        : generatedIconData(logoEditor.name, libraryIconText, libraryIconColor);
+    if (libraryIconMode === "uploaded" && !iconData) return;
+    setBusy(logoEditor.id);
+    setError(null);
+    try {
+      const result = await invoke<ActionResult>("set_app_icon", { id: logoEditor.id, iconData });
+      setNotice(result.message);
+      setLogoEditor(null);
+      await refresh(true);
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function importRecipe() {
     if (!importPath.trim()) return;
     setBusy("import");
@@ -513,7 +574,7 @@ function App() {
               <div className="app-grid">
                 {apps.map((app) => (
                   <article className="app-card" key={app.id}>
-                    <div className="card-top"><AppMark /><div className="app-title"><h2>{app.name}</h2><span>{app.category} · v{app.version}</span></div><div className={`status ${app.status}`}><i />{statusLabel(app.status)}</div></div>
+                    <div className="card-top"><AppLogo src={app.iconDataUrl} name={app.name} /><div className="app-title"><h2>{app.name}</h2><span>{app.category} · v{app.version}</span></div><div className={`status ${app.status}`}><i />{statusLabel(app.status)}</div></div>
                     <p>{app.description}</p>
                     <div className="card-meta"><span><Icon name="shield" size={16} />Updates {app.automaticUpdates ? "on" : "off"}</span><span>{formatUpdate(app.lastUpdateCheck)}</span></div>
                     <div className="card-actions">
@@ -523,7 +584,7 @@ function App() {
                         <button className="primary" disabled={busy === app.id || app.status !== "ready"} onClick={() => act("open_app_window", app.id)}>{busy === app.id || app.status === "starting" ? <span className="spinner" /> : <Icon name="open" size={17} />}{app.status === "starting" ? "Starting…" : "Open"}</button>
                       )}
                       {app.status !== "stopped" && <button className="secondary" disabled={busy === app.id} onClick={() => act("stop_app", app.id)}><Icon name="stop" size={16} />Stop</button>}
-                      <div className="menu-wrap"><button className="icon-button" onClick={(event) => { event.stopPropagation(); setMenuFor(menuFor === app.id ? null : app.id); }}><Icon name="dots" /></button>{menuFor === app.id && <div className="menu" onClick={(event) => event.stopPropagation()}><button onClick={() => act("update_app", app.id)}><Icon name="refresh" size={16} />Check for updates</button><button onClick={() => showLogs(app)}><Icon name="logs" size={16} />View logs</button><button onClick={() => act("set_automatic_updates", app.id, { enabled: !app.automaticUpdates })}><Icon name="shield" size={16} />Turn updates {app.automaticUpdates ? "off" : "on"}</button><hr /><button className="danger" onClick={() => act("uninstall_app", app.id, { deleteData: false })}><Icon name="trash" size={16} />Uninstall, keep data</button></div>}</div>
+                      <div className="menu-wrap"><button className="icon-button" onClick={(event) => { event.stopPropagation(); setMenuFor(menuFor === app.id ? null : app.id); }}><Icon name="dots" /></button>{menuFor === app.id && <div className="menu" onClick={(event) => event.stopPropagation()}><button onClick={() => act("update_app", app.id)}><Icon name="refresh" size={16} />Check for updates</button><button onClick={() => showLogoEditor(app)}><Icon name="image" size={16} />Change logo</button><button onClick={() => showLogs(app)}><Icon name="logs" size={16} />View logs</button><button onClick={() => act("set_automatic_updates", app.id, { enabled: !app.automaticUpdates })}><Icon name="shield" size={16} />Turn updates {app.automaticUpdates ? "off" : "on"}</button><hr /><button className="danger" onClick={() => act("uninstall_app", app.id, { deleteData: false })}><Icon name="trash" size={16} />Uninstall, keep data</button></div>}</div>
                     </div>
                   </article>
                 ))}
@@ -539,7 +600,7 @@ function App() {
             <div className="catalog-grid">
               {catalog.map((entry) => (
                 <article className="catalog-card" key={entry.id}>
-                  <div className="catalog-art"><AppMark /><span>OPEN<br />NOTEBOOK</span><div className="document-lines"><i /><i /><i /></div></div>
+                  <div className="catalog-art"><AppLogo src={entry.iconDataUrl} name={entry.name} catalog /><span>{entry.name}</span><div className="document-lines"><i /><i /><i /></div></div>
                   <div className="catalog-body"><div className="eyebrow"><span>{entry.category}</span><small>{entry.license}</small></div><h2>{entry.name}</h2><p>{entry.description}</p><div className="requirements"><span>{Math.round(entry.memoryMb / 1024)} GB memory</span><i /> <span>{(entry.diskMb / 1024).toFixed(0)} GB disk</span><i /><span>v{entry.version}</span></div><button className={entry.installed ? "secondary full" : "primary full"} disabled={entry.installed || busy === entry.id} onClick={() => act("install_app", entry.id)}>{busy === entry.id ? <span className="spinner" /> : entry.installed ? "Installed" : "Install package"}</button></div>
                 </article>
               ))}
@@ -592,6 +653,24 @@ function App() {
       </main>
 
       {logs && <div className="modal-backdrop" onClick={() => setLogs(null)}><div className="logs-modal" onClick={(event) => event.stopPropagation()}><div className="modal-head"><div><Icon name="logs" /><span><strong>{logs.name}</strong><small>Recent runtime logs</small></span></div><button className="icon-button" onClick={() => setLogs(null)}><Icon name="close" /></button></div><pre>{logs.output}</pre></div></div>}
+      {logoEditor && <div className="modal-backdrop" onClick={() => setLogoEditor(null)}><div className="logo-modal" onClick={(event) => event.stopPropagation()}>
+        <div className="logo-modal-head"><div><Icon name="image" /><span><strong>Change {logoEditor.name} logo</strong><small>Library, Finder, Start menu, and Dock use the same identity</small></span></div><button className="icon-button" onClick={() => setLogoEditor(null)}><Icon name="close" /></button></div>
+        <div className="logo-modal-body">
+          <div className={`logo-modal-preview ${libraryIconMode === "created" ? "created" : ""}`} style={libraryIconMode === "created" ? { background: `linear-gradient(145deg, ${libraryIconColor}, #13261a)` } : undefined}>
+            {libraryIconMode === "created" ? <strong>{iconInitial(logoEditor.name, libraryIconText)}</strong> : libraryIconMode === "uploaded" && libraryUploadedIcon ? <img src={libraryUploadedIcon} alt="Uploaded logo preview" /> : libraryIconMode === "original" && logoEditor.originalIconDataUrl ? <img src={logoEditor.originalIconDataUrl} alt="Original logo preview" /> : logoEditor.iconDataUrl ? <img src={logoEditor.iconDataUrl} alt="Current logo preview" /> : <AppMark />}
+          </div>
+          <div className="logo-modal-copy"><span>APP LOGO</span><h2>{libraryIconMode === "current" ? "Current logo" : libraryIconMode === "original" ? "Original package logo" : libraryIconMode === "uploaded" ? "Uploaded image" : "Custom icon"}</h2><p>Choose an image or make a simple icon here. Packager converts it into the native format for this computer.</p></div>
+          <div className="logo-choice-row">
+            {logoEditor.customIcon && logoEditor.originalIconDataUrl && <button className={libraryIconMode === "original" ? "selected" : ""} onClick={() => setLibraryIconMode("original")}>Restore original</button>}
+            <button className={libraryIconMode === "uploaded" ? "selected" : ""} onClick={() => libraryIconInput.current?.click()}>Upload image</button>
+            <button className={libraryIconMode === "created" ? "selected" : ""} onClick={() => setLibraryIconMode("created")}>Create icon</button>
+            {libraryIconMode !== "current" && <button onClick={() => setLibraryIconMode("current")}>Keep current</button>}
+            <input ref={libraryIconInput} className="icon-file-input" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => chooseLibraryIcon(event.target.files?.[0])} />
+          </div>
+          {libraryIconMode === "created" && <div className="logo-maker"><label><span>Letters</span><input maxLength={2} value={libraryIconText} onChange={(event) => setLibraryIconText(event.target.value.replace(/[^a-z0-9]/gi, "").slice(0, 2))} placeholder={iconInitial(logoEditor.name, "")} /></label><div><span>Color</span><div className="color-palette">{iconColors.map((color) => <button type="button" key={color} className={libraryIconColor === color ? "selected" : ""} style={{ background: color }} aria-label={`Use ${color} for the icon`} onClick={() => setLibraryIconColor(color)} />)}</div></div></div>}
+        </div>
+        <div className="logo-modal-footer"><button className="secondary" onClick={() => setLogoEditor(null)}>Cancel</button><button className="primary" disabled={libraryIconMode === "current" || busy === logoEditor.id} onClick={saveLibraryIcon}>{busy === logoEditor.id ? <><span className="spinner" />Saving…</> : "Save logo"}</button></div>
+      </div></div>}
     </div>
   );
 }

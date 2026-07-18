@@ -1,3 +1,4 @@
+use crate::icon;
 use crate::managed_runtime;
 use crate::model::{
     ActionResult, AppSummary, CatalogEntry, InstalledState, PackageRecipe, SystemStatus,
@@ -23,6 +24,7 @@ const OPEN_NOTEBOOK_COMPOSE: &str = include_str!("../packages/open-notebook/comp
 const OPEN_NOTEBOOK_ICON: &[u8] = include_bytes!("../packages/open-notebook/icon.icns");
 #[cfg(target_os = "windows")]
 const OPEN_NOTEBOOK_ICON: &[u8] = include_bytes!("../packages/open-notebook/icon.ico");
+const OPEN_NOTEBOOK_PREVIEW_ICON: &[u8] = include_bytes!("../packages/open-notebook/icon.ico");
 
 #[derive(Clone)]
 struct Instance {
@@ -619,11 +621,18 @@ fn install_launcher(
     fallback_icon: Option<&[u8]>,
 ) -> Result<(), String> {
     let bundle = launcher_bundle(recipe).ok_or("Cannot locate the user home directory")?;
+    let custom_png = definition_dir.join("custom-icon.png");
+    let custom_native = definition_dir.join("custom-icon.icns");
+    if custom_png.is_file() && !custom_native.is_file() {
+        create_macos_icon(&custom_png, &custom_native)?;
+    }
     let native_icon = definition_dir.join("icon.icns");
     if !native_icon.is_file() && definition_dir.join("icon.png").is_file() {
         create_macos_icon(&definition_dir.join("icon.png"), &native_icon)?;
     }
-    let package_icon = fs::read(native_icon).ok();
+    let package_icon = fs::read(&custom_native)
+        .ok()
+        .or_else(|| fs::read(native_icon).ok());
     let launcher_icon = package_icon
         .as_deref()
         .or(fallback_icon)
@@ -707,10 +716,20 @@ fn install_launcher(
         .map_err(|error| format!("Cannot create Packager Apps Start Menu folder: {error}"))?;
     let executable = std::env::current_exe()
         .map_err(|error| format!("Cannot locate the Packager executable: {error}"))?;
-    let icon = definition_dir.join("icon.ico");
-    if !icon.is_file() && definition_dir.join("icon.png").is_file() {
-        create_windows_icon(&definition_dir.join("icon.png"), &icon)?;
+    let custom_png = definition_dir.join("custom-icon.png");
+    let custom_icon = definition_dir.join("custom-icon.ico");
+    if custom_png.is_file() && !custom_icon.is_file() {
+        create_windows_icon(&custom_png, &custom_icon)?;
     }
+    let original_icon = definition_dir.join("icon.ico");
+    if !original_icon.is_file() && definition_dir.join("icon.png").is_file() {
+        create_windows_icon(&definition_dir.join("icon.png"), &original_icon)?;
+    }
+    let icon = if custom_icon.is_file() {
+        custom_icon
+    } else {
+        original_icon
+    };
     let script = concat!(
         "$shell = New-Object -ComObject WScript.Shell; ",
         "$link = $shell.CreateShortcut($env:PACKAGER_SHORTCUT); ",
@@ -792,6 +811,9 @@ pub fn catalog(engine: &Engine) -> Result<Vec<CatalogEntry>, String> {
         .into_iter()
         .map(|recipe| {
             let installed = root.join(&recipe.id).join("state.json").exists();
+            let icon_data_url = (recipe.id == "open-notebook")
+                .then(|| icon::data_url(OPEN_NOTEBOOK_PREVIEW_ICON).ok())
+                .flatten();
             Ok(CatalogEntry {
                 id: recipe.id,
                 name: recipe.name,
@@ -803,6 +825,7 @@ pub fn catalog(engine: &Engine) -> Result<Vec<CatalogEntry>, String> {
                 memory_mb: recipe.requirements.memory_mb,
                 disk_mb: recipe.requirements.disk_mb,
                 installed,
+                icon_data_url,
             })
         })
         .collect()
@@ -956,6 +979,11 @@ pub fn list_apps(engine: &Engine) -> Result<Vec<AppSummary>, String> {
         }
         let id = entry.file_name().to_string_lossy().to_string();
         if let Ok(instance) = load_instance(engine, &id) {
+            let original_icon_data_url = original_app_icon_data_url(&instance);
+            let custom_icon_data_url = fs::read(instance.definition_dir.join("custom-icon.png"))
+                .ok()
+                .and_then(|bytes| icon::data_url(&bytes).ok());
+            let custom_icon = custom_icon_data_url.is_some();
             apps.push(AppSummary {
                 id: instance.recipe.id.clone(),
                 name: instance.recipe.name.clone(),
@@ -966,11 +994,69 @@ pub fn list_apps(engine: &Engine) -> Result<Vec<AppSummary>, String> {
                 automatic_updates: instance.state.automatic_updates,
                 url: recipe_url(&instance.recipe, &instance.state)?,
                 last_update_check: instance.state.last_update_check,
+                icon_data_url: custom_icon_data_url.or_else(|| original_icon_data_url.clone()),
+                original_icon_data_url,
+                custom_icon,
             });
         }
     }
     apps.sort_by(|left, right| left.name.cmp(&right.name));
     Ok(apps)
+}
+
+fn original_app_icon_data_url(instance: &Instance) -> Option<String> {
+    ["icon.png", "icon.ico"]
+        .into_iter()
+        .find_map(|name| {
+            fs::read(instance.definition_dir.join(name))
+                .ok()
+                .and_then(|bytes| icon::data_url(&bytes).ok())
+        })
+        .or_else(|| {
+            (instance.recipe.id == "open-notebook")
+                .then(|| icon::data_url(OPEN_NOTEBOOK_PREVIEW_ICON).ok())
+                .flatten()
+        })
+}
+
+pub fn set_app_icon(
+    engine: &Engine,
+    id: &str,
+    icon_data: Option<&str>,
+) -> Result<ActionResult, String> {
+    let instance = load_instance(engine, id)?;
+    let normalized = icon_data.map(icon::decode_data_url).transpose()?;
+    let portable = instance.definition_dir.join("custom-icon.png");
+    for name in ["custom-icon.icns", "custom-icon.ico"] {
+        let path = instance.definition_dir.join(name);
+        if path.exists() {
+            fs::remove_file(&path)
+                .map_err(|error| format!("Cannot replace custom app icon: {error}"))?;
+        }
+    }
+    let message = if let Some(normalized) = normalized {
+        fs::write(&portable, normalized)
+            .map_err(|error| format!("Cannot save custom app icon: {error}"))?;
+        format!("{} logo updated everywhere.", instance.recipe.name)
+    } else {
+        if portable.exists() {
+            fs::remove_file(&portable)
+                .map_err(|error| format!("Cannot restore original app icon: {error}"))?;
+        }
+        format!("{} original logo restored.", instance.recipe.name)
+    };
+    if engine.launchers_enabled() {
+        install_launcher(
+            &instance.recipe,
+            &instance.definition_dir,
+            engine.launcher_icon(),
+        )?;
+    }
+    Ok(ActionResult {
+        id: id.into(),
+        status: current_status(&instance),
+        message,
+    })
 }
 
 fn update_due(instance: &Instance) -> bool {
@@ -1283,6 +1369,14 @@ pub fn import_package(engine: &Engine, source_dir: &str) -> Result<ActionResult,
 mod tests {
     use super::*;
 
+    fn test_png(width: u32, height: u32) -> Vec<u8> {
+        let mut png = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::new_rgba8(width, height)
+            .write_to(&mut png, image::ImageFormat::Png)
+            .expect("test icon should encode");
+        png.into_inner()
+    }
+
     #[test]
     fn bundled_recipe_is_valid() {
         let recipe = parse_recipe(OPEN_NOTEBOOK_RECIPE).expect("recipe should parse");
@@ -1298,6 +1392,65 @@ mod tests {
         fs::write(&compose, OPEN_NOTEBOOK_COMPOSE).expect("compose should be writable");
         validate_compose_security(&compose).expect("bundled compose should be safe");
         fs::remove_file(compose).expect("compose test file should be removable");
+    }
+
+    #[test]
+    fn catalog_exposes_the_bundled_app_logo() {
+        let root = std::env::temp_dir().join(format!("packager-catalog-test-{}", Uuid::new_v4()));
+        let engine = Engine::new(root.join("data"), root.join("cache"))
+            .expect("test engine should be created");
+        let entries = catalog(&engine).expect("catalog should load");
+        assert!(entries[0]
+            .icon_data_url
+            .as_deref()
+            .is_some_and(|value| value.starts_with("data:image/png;base64,")));
+        fs::remove_dir_all(root).expect("test directory should be removable");
+    }
+
+    #[test]
+    fn installed_app_logo_can_be_changed_and_restored() {
+        let root = std::env::temp_dir().join(format!("packager-logo-test-{}", Uuid::new_v4()));
+        let source = root.join("source");
+        fs::create_dir_all(&source).expect("package source should be created");
+        let mut recipe = parse_recipe(OPEN_NOTEBOOK_RECIPE).expect("recipe should parse");
+        recipe.id = "logo-test".into();
+        recipe.name = "Logo Test".into();
+        recipe.runtime.project_name = "packager-logo-test".into();
+        recipe.secrets.clear();
+        fs::write(
+            source.join("packager.yml"),
+            serde_yaml::to_string(&recipe).expect("recipe should serialize"),
+        )
+        .expect("recipe should be written");
+        fs::write(source.join("compose.yml"), OPEN_NOTEBOOK_COMPOSE)
+            .expect("compose should be written");
+        fs::write(source.join("icon.png"), test_png(40, 20))
+            .expect("original icon should be written");
+
+        let engine = Engine::new(root.join("data"), root.join("cache"))
+            .expect("test engine should be created");
+        import_package(
+            &engine,
+            source.to_str().expect("source path should be UTF-8"),
+        )
+        .expect("package should import");
+        let initial = list_apps(&engine).expect("apps should load").remove(0);
+        assert!(initial.icon_data_url.is_some());
+        assert!(!initial.custom_icon);
+
+        let custom = icon::data_url(&test_png(20, 40)).expect("custom icon should encode");
+        set_app_icon(&engine, "logo-test", Some(&custom)).expect("custom icon should save");
+        let changed = list_apps(&engine).expect("apps should load").remove(0);
+        assert!(changed.custom_icon);
+        assert!(root
+            .join("data/apps/logo-test/definition/custom-icon.png")
+            .is_file());
+
+        set_app_icon(&engine, "logo-test", None).expect("original icon should restore");
+        let restored = list_apps(&engine).expect("apps should load").remove(0);
+        assert!(!restored.custom_icon);
+        assert_eq!(restored.icon_data_url, restored.original_icon_data_url);
+        fs::remove_dir_all(root).expect("test directory should be removable");
     }
 
     #[test]

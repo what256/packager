@@ -129,6 +129,15 @@ async fn set_automatic_updates(
 }
 
 #[tauri::command]
+async fn set_app_icon(
+    app: AppHandle,
+    id: String,
+    icon_data: Option<String>,
+) -> Result<ActionResult, String> {
+    blocking(move || packager_core::set_app_icon(&engine(&app)?, &id, icon_data.as_deref())).await
+}
+
+#[tauri::command]
 async fn get_app_logs(app: AppHandle, id: String, lines: u32) -> Result<String, String> {
     blocking(move || packager_core::logs(&engine(&app)?, &id, lines)).await
 }
@@ -240,6 +249,7 @@ pub fn run() {
             start_app,
             stop_app,
             update_app,
+            set_app_icon,
             set_automatic_updates,
             get_app_logs,
             open_app_window,

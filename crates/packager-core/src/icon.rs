@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use image::{imageops, DynamicImage, ImageFormat, RgbaImage};
 use std::io::Cursor;
 
@@ -44,6 +45,25 @@ pub(crate) fn normalize_to_png(bytes: &[u8]) -> Result<Vec<u8>, String> {
     Ok(output.into_inner())
 }
 
+pub(crate) fn decode_data_url(data: &str) -> Result<Vec<u8>, String> {
+    let (_, encoded) = data
+        .split_once(',')
+        .filter(|(header, _)| header.starts_with("data:image/") && header.ends_with(";base64"))
+        .ok_or("Custom app icon must be a supported image")?;
+    if encoded.len() > 14 * 1024 * 1024 {
+        return Err("Custom app icon must be smaller than 10 MB".into());
+    }
+    let bytes = BASE64
+        .decode(encoded)
+        .map_err(|_| "Custom app icon contains invalid image data")?;
+    normalize_to_png(&bytes)
+}
+
+pub(crate) fn data_url(bytes: &[u8]) -> Result<String, String> {
+    let png = normalize_to_png(bytes)?;
+    Ok(format!("data:image/png;base64,{}", BASE64.encode(png)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -57,5 +77,22 @@ mod tests {
         let normalized = normalize_to_png(source.get_ref()).expect("icon should normalize");
         let decoded = image::load_from_memory(&normalized).expect("normalized icon should decode");
         assert_eq!((decoded.width(), decoded.height()), (1024, 1024));
+    }
+
+    #[test]
+    fn validates_and_decodes_image_data_urls() {
+        let mut source = Cursor::new(Vec::new());
+        DynamicImage::new_rgba8(24, 24)
+            .write_to(&mut source, ImageFormat::Png)
+            .expect("test icon should encode");
+        let encoded = format!(
+            "data:image/png;base64,{}",
+            BASE64.encode(source.into_inner())
+        );
+        let normalized = decode_data_url(&encoded).expect("data URL should decode");
+        assert!(data_url(&normalized)
+            .expect("normalized icon should encode")
+            .starts_with("data:image/png;base64,"));
+        assert!(decode_data_url("data:text/plain;base64,Zm9v").is_err());
     }
 }
