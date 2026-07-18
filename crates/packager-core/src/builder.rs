@@ -1,10 +1,12 @@
 use crate::{
+    icon,
     model::{
         ActionResult, BuilderAnalysis, BuilderRequest, PackageRecipe, PortRecipe, Requirements,
         RuntimeRecipe, SecretRecipe, ServiceAnalysis, UiRecipe, UpdateRecipe,
     },
     runtime, Engine,
 };
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use flate2::read::GzDecoder;
 use serde_yaml::{Mapping, Value};
 use std::{
@@ -18,6 +20,7 @@ use url::Url;
 use uuid::Uuid;
 
 const MAX_COMPOSE_BYTES: u64 = 2 * 1024 * 1024;
+const MAX_ICON_SCAN_ENTRIES: usize = 5000;
 
 struct SourceBundle {
     root: Option<PathBuf>,
@@ -347,13 +350,190 @@ fn analyze_bundle(bundle: &SourceBundle) -> Result<BuilderAnalysis, String> {
         .and_then(|image| image.split(':').next())
         .unwrap_or("local-app")
         .replace(['_', '.'], " ");
+    let icon = bundle.root.as_deref().and_then(find_source_icon);
+    let detected_icon = icon.as_ref().map(|path| {
+        bundle
+            .root
+            .as_deref()
+            .and_then(|root| path.strip_prefix(root).ok())
+            .unwrap_or(path)
+            .to_string_lossy()
+            .to_string()
+    });
+    let preview_icon = icon
+        .as_ref()
+        .filter(|path| {
+            path.extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| !extension.eq_ignore_ascii_case("icns"))
+        })
+        .cloned()
+        .or_else(|| bundle.root.as_deref().and_then(find_portable_source_icon));
+    let icon_preview_data_url = preview_icon
+        .as_deref()
+        .and_then(|path| fs::read(path).ok())
+        .and_then(|bytes| icon::normalize_to_png(&bytes).ok())
+        .map(|png| format!("data:image/png;base64,{}", BASE64.encode(png)));
     Ok(BuilderAnalysis {
         source: bundle.source_label.clone(),
         detected_name,
         services: result,
         candidate_ports: candidate_ports.into_iter().collect(),
         warnings,
+        detected_icon,
+        icon_preview_data_url,
     })
+}
+
+fn icon_name_score(path: &Path) -> Option<u32> {
+    let extension = path.extension()?.to_str()?.to_ascii_lowercase();
+    let extension_score = match extension.as_str() {
+        "icns" | "ico" => 0,
+        "png" => 1,
+        "jpg" | "jpeg" | "webp" => 2,
+        _ => return None,
+    };
+    let stem = path.file_stem()?.to_str()?.to_ascii_lowercase();
+    let name_score = if matches!(stem.as_str(), "appicon" | "app-icon" | "icon") {
+        0
+    } else if stem.contains("appicon") || stem.contains("app-icon") {
+        5
+    } else if stem == "logo" || stem.ends_with("-logo") || stem.ends_with("_logo") {
+        10
+    } else if stem.contains("logo") {
+        15
+    } else if stem == "favicon" || stem.starts_with("favicon-") {
+        20
+    } else {
+        return None;
+    };
+    Some(name_score + extension_score)
+}
+
+fn source_icon_candidates(root: &Path) -> Vec<PathBuf> {
+    fn visit(
+        root: &Path,
+        directory: &Path,
+        depth: usize,
+        seen: &mut usize,
+        matches: &mut Vec<(u32, PathBuf)>,
+    ) {
+        if depth > 4 || *seen >= MAX_ICON_SCAN_ENTRIES {
+            return;
+        }
+        let Ok(entries) = fs::read_dir(directory) else {
+            return;
+        };
+        for entry in entries.filter_map(Result::ok) {
+            *seen += 1;
+            if *seen > MAX_ICON_SCAN_ENTRIES {
+                break;
+            }
+            let path = entry.path();
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if file_type.is_dir() {
+                let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+                if !name.starts_with('.')
+                    && !matches!(name.as_str(), "node_modules" | "target" | "vendor")
+                {
+                    visit(root, &path, depth + 1, seen, matches);
+                }
+            } else if file_type.is_file() {
+                if let Some(score) = icon_name_score(&path) {
+                    let relative_depth = path
+                        .strip_prefix(root)
+                        .ok()
+                        .map(|relative| relative.components().count() as u32)
+                        .unwrap_or(10);
+                    matches.push((score + relative_depth, path));
+                }
+            }
+        }
+    }
+
+    let mut matches = Vec::new();
+    let mut seen = 0;
+    visit(root, root, 0, &mut seen, &mut matches);
+    matches.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
+    matches.into_iter().map(|(_, path)| path).collect()
+}
+
+fn find_source_icon(root: &Path) -> Option<PathBuf> {
+    source_icon_candidates(root).into_iter().next()
+}
+
+fn find_portable_source_icon(root: &Path) -> Option<PathBuf> {
+    source_icon_candidates(root).into_iter().find(|path| {
+        path.extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| !extension.eq_ignore_ascii_case("icns"))
+    })
+}
+
+fn custom_icon_data(data: &str) -> Result<Vec<u8>, String> {
+    let (_, encoded) = data
+        .split_once(',')
+        .filter(|(header, _)| header.starts_with("data:image/") && header.ends_with(";base64"))
+        .ok_or("Custom app icon must be a supported image")?;
+    if encoded.len() > 14 * 1024 * 1024 {
+        return Err("Custom app icon must be smaller than 10 MB".into());
+    }
+    let bytes = BASE64
+        .decode(encoded)
+        .map_err(|_| "Custom app icon contains invalid image data")?;
+    icon::normalize_to_png(&bytes)
+}
+
+fn write_package_icon(
+    bundle: &SourceBundle,
+    request: &BuilderRequest,
+    export_root: &Path,
+) -> Result<(), String> {
+    if let Some(data) = request.icon_data.as_deref() {
+        return fs::write(export_root.join("icon.png"), custom_icon_data(data)?)
+            .map_err(|error| format!("Cannot write custom app icon: {error}"));
+    }
+    let Some(source) = bundle.root.as_deref().and_then(find_source_icon) else {
+        return Ok(());
+    };
+    let bytes =
+        fs::read(&source).map_err(|error| format!("Cannot read detected app icon: {error}"))?;
+    match source
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("icns") => {
+            fs::write(export_root.join("icon.icns"), bytes)
+                .map_err(|error| format!("Cannot copy detected macOS icon: {error}"))?;
+            if let Some(portable) = bundle.root.as_deref().and_then(find_portable_source_icon) {
+                if let Ok(png) = fs::read(portable)
+                    .map_err(|error| error.to_string())
+                    .and_then(|bytes| icon::normalize_to_png(&bytes))
+                {
+                    fs::write(export_root.join("icon.png"), png)
+                        .map_err(|error| format!("Cannot prepare detected app icon: {error}"))?;
+                }
+            }
+        }
+        Some("ico") => {
+            fs::write(export_root.join("icon.ico"), &bytes)
+                .map_err(|error| format!("Cannot copy detected Windows icon: {error}"))?;
+            if let Ok(png) = icon::normalize_to_png(&bytes) {
+                fs::write(export_root.join("icon.png"), png)
+                    .map_err(|error| format!("Cannot prepare detected app icon: {error}"))?;
+            }
+        }
+        _ => fs::write(
+            export_root.join("icon.png"),
+            icon::normalize_to_png(&bytes)?,
+        )
+        .map_err(|error| format!("Cannot prepare detected app icon: {error}"))?,
+    }
+    Ok(())
 }
 
 pub fn analyze(engine: &Engine, kind: &str, source: &str) -> Result<BuilderAnalysis, String> {
@@ -508,6 +688,7 @@ pub fn build(engine: &Engine, request: BuilderRequest) -> Result<ActionResult, S
         if let Some(root) = &bundle.root {
             runtime::copy_package_tree(root, &export_root)?;
         }
+        write_package_icon(&bundle, &request, &export_root)?;
         let recipe = PackageRecipe {
             schema_version: 1,
             id: request.id.clone(),
@@ -579,6 +760,14 @@ pub fn build(engine: &Engine, request: BuilderRequest) -> Result<ActionResult, S
 mod tests {
     use super::*;
 
+    fn test_png() -> Vec<u8> {
+        let mut output = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::new_rgba8(48, 32)
+            .write_to(&mut output, image::ImageFormat::Png)
+            .expect("test icon should encode");
+        output.into_inner()
+    }
+
     #[test]
     fn parses_common_compose_port_forms() {
         for (source, expected) in [
@@ -617,5 +806,76 @@ mod tests {
         assert!(github_parts("https://github.com/acme/example").is_ok());
         assert!(github_parts("https://gitlab.com/acme/example").is_err());
         assert!(github_parts("file:///tmp/example").is_err());
+    }
+
+    #[test]
+    fn analysis_finds_and_previews_an_original_app_icon() {
+        let root = std::env::temp_dir().join(format!("packager-icon-source-{}", Uuid::new_v4()));
+        fs::create_dir_all(root.join("public")).expect("source should be created");
+        fs::write(
+            root.join("compose.yml"),
+            "services:\n  app:\n    image: example/my-app\n    ports:\n      - '3000:3000'\n",
+        )
+        .expect("compose should be written");
+        fs::write(root.join("public/logo.png"), test_png()).expect("logo should be written");
+        let engine = Engine::new(root.join("data"), root.join("cache"))
+            .expect("test engine should be created");
+
+        let analysis = analyze(&engine, "compose", root.to_string_lossy().as_ref())
+            .expect("source should analyze");
+        assert_eq!(analysis.detected_icon.as_deref(), Some("public/logo.png"));
+        assert!(analysis
+            .icon_preview_data_url
+            .as_deref()
+            .is_some_and(|preview| preview.starts_with("data:image/png;base64,")));
+        fs::remove_dir_all(root).expect("test source should be removable");
+    }
+
+    #[test]
+    fn custom_icon_data_is_normalized_for_portable_packages() {
+        let data = format!("data:image/png;base64,{}", BASE64.encode(test_png()));
+        let normalized = custom_icon_data(&data).expect("custom icon should normalize");
+        let decoded = image::load_from_memory(&normalized).expect("icon should decode");
+        assert_eq!((decoded.width(), decoded.height()), (1024, 1024));
+    }
+
+    #[test]
+    fn generated_package_installs_a_custom_portable_icon() {
+        let root = std::env::temp_dir().join(format!("packager-build-icon-{}", Uuid::new_v4()));
+        let source = root.join("source");
+        fs::create_dir_all(&source).expect("source should be created");
+        fs::write(
+            source.join("compose.yml"),
+            "services:\n  app:\n    image: example/app\n    ports:\n      - '3000:3000'\n",
+        )
+        .expect("compose should be written");
+        let engine = Engine::new(root.join("data"), root.join("cache"))
+            .expect("test engine should be created");
+        let icon_data = format!("data:image/png;base64,{}", BASE64.encode(test_png()));
+
+        build(
+            &engine,
+            BuilderRequest {
+                source_kind: "compose".into(),
+                source: source.to_string_lossy().to_string(),
+                id: "custom-icon-app".into(),
+                name: "Custom Icon App".into(),
+                description: String::new(),
+                homepage: "https://example.com".into(),
+                container_port: 3000,
+                secret_keys: Vec::new(),
+                icon_data: Some(icon_data),
+            },
+        )
+        .expect("package should build");
+
+        for icon in [
+            root.join("data/created-packages/custom-icon-app/icon.png"),
+            root.join("data/apps/custom-icon-app/definition/icon.png"),
+        ] {
+            let decoded = image::open(icon).expect("installed portable icon should decode");
+            assert_eq!((decoded.width(), decoded.height()), (1024, 1024));
+        }
+        fs::remove_dir_all(root).expect("test package should be removable");
     }
 }

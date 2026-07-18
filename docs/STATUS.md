@@ -15,6 +15,7 @@ Packager is a cross-platform alpha. The CLI is publicly distributed; desktop bui
 - Package analysis, build, import, install, start, readiness, logs, update, stop, and uninstall
 - Managed private runtimes that do not require Docker Desktop
 - Dedicated packaged-app launchers with package-specific identities and icons, hidden Packager startup UI, and one shared Library/data root
+- Builder icon discovery with a visual original-logo preview, image upload, initial-based icon creator, and portable macOS/Windows conversion
 
 ## Verification record
 

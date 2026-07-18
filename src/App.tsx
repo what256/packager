@@ -59,12 +59,86 @@ type BuilderAnalysis = {
   services: Array<{ name: string; image: string | null; ports: number[]; volumes: string[]; environment: string[] }>;
   candidatePorts: number[];
   warnings: string[];
+  detectedIcon: string | null;
+  iconPreviewDataUrl: string | null;
 };
 
 type SourceKind = "compose" | "image" | "github";
+type IconMode = "detected" | "created" | "uploaded";
+
+const iconColors = ["#29563a", "#245a72", "#5b3f86", "#8a472f", "#8b6723", "#353b48"];
 
 function slugify(value: string) {
   return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 70);
+}
+
+function iconInitial(name: string, override: string) {
+  return (override.trim() || name.trim().charAt(0) || "A").slice(0, 2).toUpperCase();
+}
+
+function generatedIconData(name: string, override: string, color: string) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1024;
+  canvas.height = 1024;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("This computer could not create an app icon");
+  const gradient = context.createLinearGradient(130, 80, 890, 950);
+  gradient.addColorStop(0, color);
+  gradient.addColorStop(1, "#13261a");
+  context.fillStyle = gradient;
+  context.beginPath();
+  context.roundRect(48, 48, 928, 928, 224);
+  context.fill();
+  context.strokeStyle = "rgba(255,255,255,.18)";
+  context.lineWidth = 16;
+  context.beginPath();
+  context.arc(168, 870, 330, 0, Math.PI * 2);
+  context.stroke();
+  context.beginPath();
+  context.arc(900, 130, 280, 0, Math.PI * 2);
+  context.stroke();
+  context.fillStyle = "#f4fff1";
+  context.font = `700 ${iconInitial(name, override).length > 1 ? 390 : 500}px -apple-system, BlinkMacSystemFont, sans-serif`;
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(iconInitial(name, override), 512, 535);
+  return canvas.toDataURL("image/png");
+}
+
+function uploadedIconData(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    if (file.size > 10 * 1024 * 1024) {
+      reject(new Error("Choose an image smaller than 10 MB"));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Packager could not read that image"));
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => reject(new Error("Choose a PNG, JPEG, WebP, or SVG image"));
+      image.onload = () => {
+        if (!image.naturalWidth || !image.naturalHeight || image.naturalWidth > 8192 || image.naturalHeight > 8192) {
+          reject(new Error("Logo dimensions must be between 1 and 8192 pixels"));
+          return;
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = 1024;
+        canvas.height = 1024;
+        const context = canvas.getContext("2d");
+        if (!context) {
+          reject(new Error("This computer could not prepare that image"));
+          return;
+        }
+        const scale = Math.min(1024 / image.naturalWidth, 1024 / image.naturalHeight);
+        const width = image.naturalWidth * scale;
+        const height = image.naturalHeight * scale;
+        context.drawImage(image, (1024 - width) / 2, (1024 - height) / 2, width, height);
+        resolve(canvas.toDataURL("image/png"));
+      };
+      image.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 const glyphs: Record<string, React.ReactNode> = {
@@ -129,10 +203,15 @@ function App() {
   const [packageHomepage, setPackageHomepage] = useState("");
   const [containerPort, setContainerPort] = useState("");
   const [secretKeys, setSecretKeys] = useState("");
+  const [iconMode, setIconMode] = useState<IconMode>("created");
+  const [uploadedIcon, setUploadedIcon] = useState<string | null>(null);
+  const [iconColor, setIconColor] = useState(iconColors[0]);
+  const [iconText, setIconText] = useState("");
   const [launcherAppId, setLauncherAppId] = useState<string | null | undefined>(undefined);
   const didCheckUpdates = useRef(false);
   const didCheckPackagerUpdate = useRef(false);
   const handledLinks = useRef(new Set<string>());
+  const iconInput = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async (quiet = false) => {
     try {
@@ -334,6 +413,9 @@ function App() {
       setPackageId(slugify(name));
       setContainerPort(String(result.candidatePorts[0] ?? ""));
       if (sourceKind === "github") setPackageHomepage(builderSource.trim());
+      setIconMode(result.detectedIcon ? "detected" : "created");
+      setUploadedIcon(null);
+      setIconText("");
     } catch (reason) {
       setError(String(reason));
     } finally {
@@ -347,6 +429,11 @@ function App() {
     setBusy("build");
     setError(null);
     try {
+      const iconData = iconMode === "detected"
+        ? null
+        : iconMode === "uploaded"
+          ? uploadedIcon
+          : generatedIconData(packageName, iconText, iconColor);
       const result = await invoke<ActionResult>("build_package", {
         request: {
           sourceKind,
@@ -357,6 +444,7 @@ function App() {
           homepage: packageHomepage.trim(),
           containerPort: port,
           secretKeys: secretKeys.split(",").map((key) => key.trim()).filter(Boolean),
+          iconData,
         },
       });
       setNotice(result.message);
@@ -368,6 +456,19 @@ function App() {
       setError(String(reason));
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function chooseIcon(file: File | undefined) {
+    if (!file) return;
+    setError(null);
+    try {
+      setUploadedIcon(await uploadedIconData(file));
+      setIconMode("uploaded");
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      if (iconInput.current) iconInput.current.value = "";
     }
   }
 
@@ -450,7 +551,7 @@ function App() {
           <section className="builder-view">
             <div className="builder-intro"><span className="step-number">01</span><div><h2>Choose what already runs</h2><p>Start with a Compose project, one container image, or a public GitHub repository. Packager reads the source and proposes a safe desktop package.</p></div></div>
             <div className="source-tabs">
-              {(["compose", "image", "github"] as SourceKind[]).map((kind) => <button key={kind} className={sourceKind === kind ? "active" : ""} onClick={() => { setSourceKind(kind); setAnalysis(null); setBuilderSource(""); }}>{kind === "compose" ? "Compose folder" : kind === "image" ? "Docker image" : "GitHub repository"}</button>)}
+              {(["compose", "image", "github"] as SourceKind[]).map((kind) => <button key={kind} disabled={busy === "analyze"} className={sourceKind === kind ? "active" : ""} onClick={() => { setSourceKind(kind); setAnalysis(null); setBuilderSource(""); }}>{kind === "compose" ? "Compose folder" : kind === "image" ? "Docker image" : "GitHub repository"}</button>)}
             </div>
             <div className="import-panel source-panel"><label>{sourceKind === "compose" ? "Folder or Compose file" : sourceKind === "image" ? "Container image" : "Public repository URL"}</label><div className="path-input"><Icon name={sourceKind === "compose" ? "folder" : sourceKind === "github" ? "open" : "catalog"} size={19} /><input value={builderSource} onChange={(event) => setBuilderSource(event.target.value)} placeholder={sourceKind === "compose" ? "/Users/you/Projects/my-stack" : sourceKind === "image" ? "ghcr.io/owner/app:latest" : "https://github.com/owner/repository"} onKeyDown={(event) => event.key === "Enter" && analyzeSource()} /><button className="primary" disabled={!builderSource.trim() || busy === "analyze"} onClick={analyzeSource}>{busy === "analyze" ? <><span className="spinner" />Inspecting…</> : "Analyze"}</button></div><small>Analysis does not start containers. Public GitHub sources are downloaded to a temporary Packager cache.</small></div>
 
@@ -459,7 +560,7 @@ function App() {
               <div className="analysis-grid">{analysis.services.map((service) => <div className="service-row" key={service.name}><div><strong>{service.name}</strong><span>{service.image ?? "Built from local source"}</span></div><small>{service.ports.length ? `Ports ${service.ports.join(", ")}` : "No exposed port"}</small></div>)}</div>
               {analysis.warnings.length > 0 && <div className="review-warnings">{analysis.warnings.map((warning) => <p key={warning}><Icon name="shield" size={15} />{warning}</p>)}</div>}
 
-              <div className="builder-step"><span className="step-number">03</span><div><h2>Name the app and confirm its web port</h2><p>Packager rewrites every published port to loopback with collision-free allocation. Comma-separated secret variables are generated into Keychain.</p></div></div>
+              <div className="builder-step"><span className="step-number">03</span><div><h2>Give the app its identity</h2><p>Confirm its name and web port, then keep the logo Packager found or replace it with your own.</p></div></div>
               <div className="package-form">
                 <label><span>App name</span><input value={packageName} onChange={(event) => { setPackageName(event.target.value); setPackageId(slugify(event.target.value)); }} /></label>
                 <label><span>Package id</span><input value={packageId} onChange={(event) => setPackageId(slugify(event.target.value))} /></label>
@@ -467,6 +568,19 @@ function App() {
                 <label><span>Homepage (optional)</span><input value={packageHomepage} onChange={(event) => setPackageHomepage(event.target.value)} placeholder="https://…" /></label>
                 <label className="wide"><span>Description (optional)</span><input value={packageDescription} onChange={(event) => setPackageDescription(event.target.value)} placeholder="What this app does" /></label>
                 <label className="wide"><span>Secret environment keys (optional)</span><input value={secretKeys} onChange={(event) => setSecretKeys(event.target.value.toUpperCase())} placeholder="API_KEY, ENCRYPTION_SECRET" /></label>
+                <div className="icon-editor wide">
+                  <div className={`icon-preview ${iconMode === "created" ? "created" : ""}`} style={iconMode === "created" ? { background: `linear-gradient(145deg, ${iconColor}, #13261a)` } : undefined}>
+                    {iconMode === "detected" && analysis.iconPreviewDataUrl ? <img src={analysis.iconPreviewDataUrl} alt="Detected app logo" /> : iconMode === "uploaded" && uploadedIcon ? <img src={uploadedIcon} alt="Uploaded app logo" /> : <strong>{iconInitial(packageName, iconText)}</strong>}
+                  </div>
+                  <div className="icon-editor-copy"><span>App logo</span><strong>{iconMode === "detected" ? "Found in the original app" : iconMode === "uploaded" ? "Your uploaded logo" : "Your custom icon"}</strong><small>{iconMode === "detected" ? analysis.detectedIcon ?? "Detected automatically" : "Saved into the package and converted for each operating system."}</small></div>
+                  <div className="icon-actions">
+                    {analysis.detectedIcon && <button type="button" className={iconMode === "detected" ? "selected" : ""} onClick={() => setIconMode("detected")}>Use original</button>}
+                    <button type="button" className={iconMode === "uploaded" ? "selected" : ""} onClick={() => iconInput.current?.click()}>Upload image</button>
+                    <button type="button" className={iconMode === "created" ? "selected" : ""} onClick={() => setIconMode("created")}>Create icon</button>
+                    <input ref={iconInput} className="icon-file-input" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => chooseIcon(event.target.files?.[0])} />
+                  </div>
+                  {iconMode === "created" && <div className="icon-maker"><label><span>Letters</span><input maxLength={2} value={iconText} onChange={(event) => setIconText(event.target.value.replace(/[^a-z0-9]/gi, "").slice(0, 2))} placeholder={iconInitial(packageName, "")} /></label><div><span>Color</span><div className="color-palette">{iconColors.map((color) => <button type="button" key={color} className={iconColor === color ? "selected" : ""} style={{ background: color }} aria-label={`Use ${color} for the icon`} onClick={() => setIconColor(color)} />)}</div></div></div>}
+                </div>
                 <button className="primary build-button" disabled={busy === "build" || !packageName || !packageId || !containerPort} onClick={createPackage}>{busy === "build" ? <><span className="spinner" />Building package…</> : <>Generate & install <Icon name="chevron" size={16} /></>}</button>
               </div>
             </>}

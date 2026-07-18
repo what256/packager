@@ -205,6 +205,8 @@ pub struct BuilderAnalysis {
     pub services: Vec<ServiceAnalysis>,
     pub candidate_ports: Vec<u16>,
     pub warnings: Vec<String>,
+    pub detected_icon: Option<String>,
+    pub icon_preview_data_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -219,4 +221,6 @@ pub struct BuilderRequest {
     pub container_port: u16,
     #[serde(default)]
     pub secret_keys: Vec<String>,
+    #[serde(default)]
+    pub icon_data: Option<String>,
 }

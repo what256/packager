@@ -619,7 +619,11 @@ fn install_launcher(
     fallback_icon: Option<&[u8]>,
 ) -> Result<(), String> {
     let bundle = launcher_bundle(recipe).ok_or("Cannot locate the user home directory")?;
-    let package_icon = fs::read(definition_dir.join("icon.icns")).ok();
+    let native_icon = definition_dir.join("icon.icns");
+    if !native_icon.is_file() && definition_dir.join("icon.png").is_file() {
+        create_macos_icon(&definition_dir.join("icon.png"), &native_icon)?;
+    }
+    let package_icon = fs::read(native_icon).ok();
     let launcher_icon = package_icon
         .as_deref()
         .or(fallback_icon)
@@ -634,6 +638,59 @@ fn install_launcher(
             .output();
     }
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn create_macos_icon(source: &Path, destination: &Path) -> Result<(), String> {
+    let parent = destination.parent().ok_or("Invalid macOS icon path")?;
+    let iconset = parent.join(format!(".packager-icon-{}.iconset", Uuid::new_v4()));
+    fs::create_dir_all(&iconset)
+        .map_err(|error| format!("Cannot prepare macOS app icon: {error}"))?;
+    let result = (|| -> Result<(), String> {
+        for (name, size) in [
+            ("icon_16x16.png", 16),
+            ("icon_16x16@2x.png", 32),
+            ("icon_32x32.png", 32),
+            ("icon_32x32@2x.png", 64),
+            ("icon_128x128.png", 128),
+            ("icon_128x128@2x.png", 256),
+            ("icon_256x256.png", 256),
+            ("icon_256x256@2x.png", 512),
+            ("icon_512x512.png", 512),
+            ("icon_512x512@2x.png", 1024),
+        ] {
+            let output = Command::new("/usr/bin/sips")
+                .args(["-z", &size.to_string(), &size.to_string()])
+                .arg(source)
+                .arg("--out")
+                .arg(iconset.join(name))
+                .output()
+                .map_err(|error| format!("Cannot resize macOS app icon: {error}"))?;
+            if !output.status.success() {
+                return Err(format!(
+                    "Cannot resize macOS app icon: {}",
+                    String::from_utf8_lossy(&output.stderr).trim()
+                ));
+            }
+        }
+        let output = Command::new("/usr/bin/iconutil")
+            .args(["-c", "icns"])
+            .arg(&iconset)
+            .arg("-o")
+            .arg(destination)
+            .output()
+            .map_err(|error| format!("Cannot create macOS app icon: {error}"))?;
+        if output.status.success() {
+            Ok(())
+        } else {
+            Err(format!(
+                "Cannot create macOS app icon: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ))
+        }
+    })();
+    let _ = fs::remove_dir_all(iconset);
+    result
 }
 
 #[cfg(target_os = "windows")]
@@ -651,6 +708,9 @@ fn install_launcher(
     let executable = std::env::current_exe()
         .map_err(|error| format!("Cannot locate the Packager executable: {error}"))?;
     let icon = definition_dir.join("icon.ico");
+    if !icon.is_file() && definition_dir.join("icon.png").is_file() {
+        create_windows_icon(&definition_dir.join("icon.png"), &icon)?;
+    }
     let script = concat!(
         "$shell = New-Object -ComObject WScript.Shell; ",
         "$link = $shell.CreateShortcut($env:PACKAGER_SHORTCUT); ",
@@ -679,6 +739,27 @@ fn install_launcher(
             String::from_utf8_lossy(&output.stderr).trim()
         ))
     }
+}
+
+#[cfg(target_os = "windows")]
+fn create_windows_icon(source: &Path, destination: &Path) -> Result<(), String> {
+    let decoded = image::open(source)
+        .map_err(|error| format!("Cannot read portable app icon: {error}"))?
+        .to_rgba8();
+    let mut directory = ico::IconDir::new(ico::ResourceType::Icon);
+    for size in [16, 24, 32, 48, 64, 128, 256] {
+        let resized =
+            image::imageops::resize(&decoded, size, size, image::imageops::FilterType::Lanczos3);
+        let image = ico::IconImage::from_rgba_data(size, size, resized.into_raw());
+        let entry = ico::IconDirEntry::encode(&image)
+            .map_err(|error| format!("Cannot encode Windows app icon: {error}"))?;
+        directory.add_entry(entry);
+    }
+    let file = fs::File::create(destination)
+        .map_err(|error| format!("Cannot create Windows app icon: {error}"))?;
+    directory
+        .write(file)
+        .map_err(|error| format!("Cannot write Windows app icon: {error}"))
 }
 
 #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
@@ -1300,5 +1381,22 @@ mod tests {
             "dev.packager.launcher.open.notebook"
         );
         fs::remove_dir_all(root).expect("launcher test directory should be removable");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn portable_png_becomes_a_native_macos_icon() {
+        let root = std::env::temp_dir().join(format!("packager-icon-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).expect("icon test directory should be created");
+        let source = root.join("icon.png");
+        let destination = root.join("icon.icns");
+        let mut png = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::new_rgba8(1024, 1024)
+            .write_to(&mut png, image::ImageFormat::Png)
+            .expect("test icon should encode");
+        fs::write(&source, png.into_inner()).expect("test icon should be written");
+        create_macos_icon(&source, &destination).expect("native icon should be created");
+        assert!(fs::metadata(&destination).is_ok_and(|metadata| metadata.len() > 0));
+        fs::remove_dir_all(root).expect("icon test directory should be removable");
     }
 }

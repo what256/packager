@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use clap::{Parser, Subcommand, ValueEnum};
 use packager_core::{BuilderRequest, Engine};
 use serde::Serialize;
@@ -82,6 +83,9 @@ enum Commands {
         /// Environment variable to generate and store securely; repeatable.
         #[arg(long = "secret")]
         secrets: Vec<String>,
+        /// PNG, JPEG, WebP, or ICO file to use instead of an automatically detected app icon.
+        #[arg(long)]
+        icon: Option<PathBuf>,
     },
     /// Start an installed app.
     Start {
@@ -250,6 +254,7 @@ fn run() -> Result<(), String> {
             homepage,
             port,
             secrets,
+            icon,
         } => print(
             &packager_core::build(
                 &engine,
@@ -262,6 +267,17 @@ fn run() -> Result<(), String> {
                     homepage,
                     container_port: port,
                     secret_keys: secrets,
+                    icon_data: icon
+                        .map(|path| {
+                            std::fs::read(&path)
+                                .map(|bytes| {
+                                    format!("data:image/png;base64,{}", BASE64.encode(bytes))
+                                })
+                                .map_err(|error| {
+                                    format!("Cannot read icon {}: {error}", path.display())
+                                })
+                        })
+                        .transpose()?,
                 },
             )?,
             cli.json,
