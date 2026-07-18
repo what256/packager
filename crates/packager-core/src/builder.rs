@@ -358,7 +358,7 @@ fn analyze_bundle(bundle: &SourceBundle) -> Result<BuilderAnalysis, String> {
             .and_then(|root| path.strip_prefix(root).ok())
             .unwrap_or(path)
             .to_string_lossy()
-            .to_string()
+            .replace('\\', "/")
     });
     let preview_icon = icon
         .as_ref()
