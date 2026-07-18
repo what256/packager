@@ -129,6 +129,7 @@ function App() {
   const [packageHomepage, setPackageHomepage] = useState("");
   const [containerPort, setContainerPort] = useState("");
   const [secretKeys, setSecretKeys] = useState("");
+  const [launcherAppId, setLauncherAppId] = useState<string | null | undefined>(undefined);
   const didCheckUpdates = useRef(false);
   const didCheckPackagerUpdate = useRef(false);
   const handledLinks = useRef(new Set<string>());
@@ -156,7 +157,7 @@ function App() {
   }, [refresh]);
 
   useEffect(() => {
-    if (didCheckUpdates.current || apps.length === 0) return;
+    if (launcherAppId !== null || didCheckUpdates.current || apps.length === 0) return;
     didCheckUpdates.current = true;
     invoke<ActionResult[]>("run_automatic_updates")
       .then((results) => {
@@ -164,10 +165,10 @@ function App() {
         refresh(true);
       })
       .catch(() => undefined);
-  }, [apps.length, refresh]);
+  }, [apps.length, launcherAppId, refresh]);
 
   useEffect(() => {
-    if (!import.meta.env.PROD || didCheckPackagerUpdate.current) return;
+    if (launcherAppId !== null || !import.meta.env.PROD || didCheckPackagerUpdate.current) return;
     didCheckPackagerUpdate.current = true;
     check()
       .then(async (update) => {
@@ -177,7 +178,7 @@ function App() {
         await relaunch();
       })
       .catch(() => undefined);
-  }, []);
+  }, [launcherAppId]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -229,6 +230,12 @@ function App() {
       }
     }
 
+    invoke<string | null>("get_launcher_app_id")
+      .then((id) => {
+        setLauncherAppId(id);
+        if (id) return handleLinks([`packager://open/${id}`]);
+      })
+      .catch(() => setLauncherAppId(null));
     getCurrent().then((urls) => urls && handleLinks(urls)).catch(() => undefined);
     onOpenUrl(handleLinks).then((stop) => { unlisten = stop; }).catch(() => undefined);
     return () => {

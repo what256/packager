@@ -14,7 +14,7 @@ Packager is a cross-platform alpha. The CLI is publicly distributed; desktop bui
 - macOS ARM64/x64 and Windows ARM64/x64 builds
 - Package analysis, build, import, install, start, readiness, logs, update, stop, and uninstall
 - Managed private runtimes that do not require Docker Desktop
-- Dedicated packaged-app launchers with package-specific icons and hidden Packager startup UI
+- Dedicated packaged-app launchers with package-specific identities and icons, hidden Packager startup UI, and one shared Library/data root
 
 ## Verification record
 
@@ -28,7 +28,7 @@ Packager is a cross-platform alpha. The CLI is publicly distributed; desktop bui
 
 The retained macOS evidence was produced from runtime commit `441df0f` and has SHA-256 `55793ec419fa5ef93116171842d732089ab7b61a98ed8d22a40187f86f3bcadb`.
 
-On 2026-07-18, the current macOS desktop build also completed a manual Open Notebook gate from its generated launcher: it installed and started the private Colima/Lima runtime, pulled both images, migrated the database, returned HTTP successfully on a dynamic loopback port, displayed only the `Open Notebook` window, and used the official Open Notebook icon. Existing app data was preserved while the older preview definition and launcher were refreshed.
+On 2026-07-18, the current macOS desktop build also completed a manual Open Notebook gate from its generated launcher: it installed and started the private Colima/Lima runtime, pulled both images, migrated the database, returned HTTP successfully on a dynamic loopback port, displayed only the `Open Notebook` window, and used the official Open Notebook icon. The launcher runs from its own full `Open Notebook.app` bundle, macOS exposes a distinct `Open Notebook` Dock item, and both it and `Packager.app` resolve the same shared Library/data root. Existing app data was preserved while the older preview definition and launcher were refreshed, and stale project build bundles were removed from Spotlight so Finder exposes only the two installed apps.
 
 ## Security baseline
 

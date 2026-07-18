@@ -119,6 +119,11 @@ impl Engine {
         self
     }
 
+    pub fn with_launcher_installation(mut self) -> Self {
+        self.install_launchers = true;
+        self
+    }
+
     pub(crate) fn launcher_icon(&self) -> Option<&[u8]> {
         self.launcher_icon.as_deref()
     }

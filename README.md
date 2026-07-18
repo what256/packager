@@ -153,7 +153,8 @@ Maintainers can register a dedicated GitHub Actions runner with the labels `wind
 - Built-in Open Notebook package
 - Dynamic loopback ports with collision repair
 - Secrets in macOS Keychain or Windows Credential Manager
-- Start, stop, readiness detection, logs, deep-link launchers, and automatic image updates
+- Start, stop, readiness detection, logs, native packaged-app launchers, and automatic image updates
+- macOS launchers are complete app bundles with their own name, bundle identity, process, and Dock icon; every launcher and the Packager Library use the same shared data directory
 - Native launchers use a package's own `icon.icns` on macOS or `icon.ico` on Windows, with the Packager icon only as a fallback
 - Signed desktop self-updates; signed/notarized macOS and Authenticode-signed Windows release configuration with post-build signature, timestamp, and updater-artifact verification
 - Blocking of privileged containers, host namespaces, engine-socket mounts, devices/capabilities, unrestricted host binds, and non-loopback published ports
