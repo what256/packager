@@ -72,6 +72,7 @@ header h1 { margin: 0; font-family: Manrope, sans-serif; font-size: 30px; line-h
 .app-mark span { position: relative; z-index: 2; font-family: Georgia, serif; font-size: 22px; font-style: italic; }
 .app-mark i { position: absolute; right: 9px; bottom: 9px; width: 6px; height: 6px; border-radius: 50%; background: #8eff68; }
 .app-mark.small { width: 38px; height: 38px; border-radius: 10px; }
+.app-logo { width: 49px; height: 49px; flex: 0 0 auto; object-fit: contain; border-radius: 13px; filter: drop-shadow(0 5px 9px #18291b18); }
 .app-title { min-width: 0; margin-left: 13px; }
 .app-title h2 { margin: 0 0 3px; font-family: Manrope, sans-serif; font-size: 15px; letter-spacing: -.35px; }
 .app-title span { color: #8c978b; font-size: 10px; }
@@ -118,6 +119,8 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .catalog-art { position: relative; height: 150px; padding: 28px; display: flex; align-items: center; gap: 17px; overflow: hidden; color: #eaffe9; background: radial-gradient(circle at 85% 20%, #4f8a5b 0, transparent 31%), linear-gradient(135deg, #152f1c, #285436); }
 .catalog-art::after { content: ""; position: absolute; width: 150px; height: 150px; right: -45px; bottom: -90px; border: 1px solid #c2f7b947; border-radius: 50%; }
 .catalog-art > span { font-family: Manrope, sans-serif; font-size: 14px; font-weight: 700; line-height: 1.25; letter-spacing: 1px; }
+.catalog-logo { position: relative; z-index: 1; width: 72px; height: 72px; flex: 0 0 auto; object-fit: contain; filter: drop-shadow(0 10px 18px #0b1d0e55); }
+.catalog-art > span { position: relative; z-index: 1; max-width: 130px; text-transform: uppercase; }
 .document-lines { position: absolute; right: 26px; bottom: 23px; width: 72px; padding: 12px; display: grid; gap: 7px; transform: rotate(-7deg); border: 1px solid #ffffff3b; border-radius: 8px; background: #ffffff15; backdrop-filter: blur(5px); }
 .document-lines i { height: 3px; border-radius: 2px; background: #d9f5d36e; }
 .document-lines i:nth-child(2) { width: 75%; }
@@ -214,6 +217,29 @@ code { padding: 2px 5px; border-radius: 5px; color: #3d5c40; background: #ebefea
 .modal-head strong { font-size: 12px; }.modal-head small { color: #7d8a7e; font-size: 9px; }
 .modal-head .icon-button { color: #a6b0a6; border-color: #344137; background: #1b271e; }
 .logs-modal pre { flex: 1; margin: 0; padding: 22px; overflow: auto; color: #b7c5b6; font-family: "SFMono-Regular", Consolas, monospace; font-size: 10px; line-height: 1.65; white-space: pre-wrap; }
+.logo-modal { width: min(620px, 90vw); overflow: hidden; border: 1px solid #dbe2d8; border-radius: 19px; background: #fff; box-shadow: 0 30px 80px #0c120d45; }
+.logo-modal-head { min-height: 70px; padding: 0 18px 0 22px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e7ebe5; }
+.logo-modal-head > div { display: flex; align-items: center; gap: 12px; color: #31523a; }
+.logo-modal-head span { display: grid; gap: 3px; }
+.logo-modal-head strong { color: #2f3d31; font-size: 12px; }
+.logo-modal-head small { color: #889289; font-size: 9px; }
+.logo-modal-body { padding: 26px; display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 20px; align-items: center; }
+.logo-modal-preview { width: 112px; height: 112px; display: grid; place-items: center; overflow: hidden; border: 1px solid #d7ded4; border-radius: 25px; background: #f7f9f5; box-shadow: 0 9px 24px #1d2f1d18; }
+.logo-modal-preview img { width: 100%; height: 100%; object-fit: contain; }
+.logo-modal-preview .app-mark { width: 76px; height: 76px; border-radius: 19px; }
+.logo-modal-preview.created { color: #f4fff1; border-color: #ffffff26; }
+.logo-modal-preview.created strong { font-family: Manrope, sans-serif; font-size: 42px; letter-spacing: -2px; }
+.logo-modal-copy > span, .logo-maker span { color: #657166; font-size: 8px; font-weight: 800; letter-spacing: .8px; }
+.logo-modal-copy h2 { margin: 5px 0 7px; color: #2f3d31; font-family: Manrope, sans-serif; font-size: 18px; letter-spacing: -.5px; }
+.logo-modal-copy p { margin: 0; color: #7c867d; font-size: 10px; line-height: 1.55; }
+.logo-choice-row { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 7px; padding-top: 2px; }
+.logo-choice-row button { min-height: 35px; padding: 0 12px; border: 1px solid #d7ded4; border-radius: 9px; color: #5f6b61; background: #fff; font-size: 9px; font-weight: 700; cursor: pointer; }
+.logo-choice-row button:hover, .logo-choice-row button.selected { color: #294b30; border-color: #94aa92; background: #eef5eb; }
+.logo-maker { grid-column: 1 / -1; padding: 16px; display: flex; align-items: end; gap: 22px; border: 1px solid #e0e5dd; border-radius: 11px; background: #f8faf6; }
+.logo-maker label, .logo-maker > div { display: grid; gap: 7px; }
+.logo-maker label { width: 100px; }
+.logo-maker input { width: 100%; height: 35px; padding: 0 9px; border: 1px solid #d7ded4; border-radius: 8px; text-align: center; text-transform: uppercase; font-size: 11px; font-weight: 800; }
+.logo-modal-footer { min-height: 68px; padding: 12px 18px; display: flex; justify-content: flex-end; align-items: center; gap: 8px; border-top: 1px solid #e7ebe5; background: #fafbf9; }
 .spinner { width: 14px; height: 14px; display: inline-block; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .75s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse { 50% { opacity: .25; } }

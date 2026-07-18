@@ -90,7 +90,8 @@ packager stop open-notebook
 
 packager analyze compose ./my-project --json
 packager build compose ./my-project \
-  --id my-app --name "My App" --port 3000 --secret APP_ENCRYPTION_KEY
+  --id my-app --name "My App" --port 3000 --secret APP_ENCRYPTION_KEY \
+  --icon ./my-app-logo.png
 packager import ./shareable-package
 packager auto-updates enable my-app
 packager auto-updates run
@@ -155,7 +156,8 @@ Maintainers can register a dedicated GitHub Actions runner with the labels `wind
 - Secrets in macOS Keychain or Windows Credential Manager
 - Start, stop, readiness detection, logs, native packaged-app launchers, and automatic image updates
 - macOS launchers are complete app bundles with their own name, bundle identity, process, and Dock icon; every launcher and the Packager Library use the same shared data directory
-- Native launchers use a package's own `icon.icns` on macOS or `icon.ico` on Windows, with the Packager icon only as a fallback
+- Library and Catalog display the package's real logo; Library's three-dot menu can upload a replacement, create an initial-based icon, or restore the original package artwork
+- Native launchers use the same chosen logo in Finder/Dock on macOS and the Start menu on Windows, with the Packager icon only as a fallback
 - Signed desktop self-updates; signed/notarized macOS and Authenticode-signed Windows release configuration with post-build signature, timestamp, and updater-artifact verification
 - Blocking of privileged containers, host namespaces, engine-socket mounts, devices/capabilities, unrestricted host binds, and non-loopback published ports
 
@@ -174,6 +176,8 @@ my-app/
 ```
 
 The Builder looks for common app-icon, logo, and favicon files in Compose folders and public GitHub repositories. It shows the detected logo before packaging and lets you upload an image or create an initial-based icon instead. A portable `icon.png` is converted into `.icns` on macOS and `.ico` on Windows; an existing platform-native icon still takes priority. Open Notebook keeps its first-party bundled icon.
+
+To change an installed app later, open **Library**, use the app card's three-dot menu, and choose **Change logo**. Upload a PNG, JPEG, WebP, or SVG, or create an icon from one or two letters and a color. Packager keeps the package's original artwork separately, so **Restore original** becomes available after a replacement is saved. The selected logo updates the Library and native launcher together.
 
 Minimal recipe:
 

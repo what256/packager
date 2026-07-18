@@ -473,17 +473,7 @@ fn find_portable_source_icon(root: &Path) -> Option<PathBuf> {
 }
 
 fn custom_icon_data(data: &str) -> Result<Vec<u8>, String> {
-    let (_, encoded) = data
-        .split_once(',')
-        .filter(|(header, _)| header.starts_with("data:image/") && header.ends_with(";base64"))
-        .ok_or("Custom app icon must be a supported image")?;
-    if encoded.len() > 14 * 1024 * 1024 {
-        return Err("Custom app icon must be smaller than 10 MB".into());
-    }
-    let bytes = BASE64
-        .decode(encoded)
-        .map_err(|_| "Custom app icon contains invalid image data")?;
-    icon::normalize_to_png(&bytes)
+    icon::decode_data_url(data)
 }
 
 fn write_package_icon(

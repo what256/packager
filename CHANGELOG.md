@@ -9,6 +9,7 @@ This file records user-visible Packager milestones. Dates use UTC. The current r
 - A repeatable real macOS managed-runtime gate with retained JSON evidence.
 - `packager runtime uninstall` for deleting Packager's private VM, tools, and container storage.
 - A maintainer handbook and reusable security/dependency check command.
+- Real package logos in Library and Catalog, with upload, generated-icon, and restore-original controls for installed apps.
 
 ### Fixed
 

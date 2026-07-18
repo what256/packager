@@ -143,6 +143,7 @@ pub struct CatalogEntry {
     pub memory_mb: u64,
     pub disk_mb: u64,
     pub installed: bool,
+    pub icon_data_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -157,6 +158,9 @@ pub struct AppSummary {
     pub automatic_updates: bool,
     pub url: String,
     pub last_update_check: Option<u64>,
+    pub icon_data_url: Option<String>,
+    pub original_icon_data_url: Option<String>,
+    pub custom_icon: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
