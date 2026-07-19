@@ -160,6 +160,7 @@ Maintainers can register a dedicated GitHub Actions runner with the labels `wind
 - Native launchers use the same chosen logo in Finder/Dock on macOS and the Start menu on Windows, with the Packager icon only as a fallback
 - Signed desktop self-updates; signed/notarized macOS and Authenticode-signed Windows release configuration with post-build signature, timestamp, and updater-artifact verification
 - Blocking of privileged containers, host namespaces, engine-socket mounts, devices/capabilities, unrestricted host binds, and non-loopback published ports
+- Declarative, narrow connections from packaged apps to named services already running on the computer, without enabling host networking
 
 ## Package format
 
@@ -198,6 +199,11 @@ runtime:
     - name: web
       container_port: 3000
       environment: PACKAGER_WEB_PORT
+  host_services:
+    - name: local-api
+      service: app
+      port: 11434
+      environment: LOCAL_API_BASE
 ui:
   port: web
   path: /
@@ -222,6 +228,10 @@ services:
     volumes:
       - ${PACKAGER_DATA_DIR:?PACKAGER_DATA_DIR is required}/app:/app/data
 ```
+
+`host_services` is for software already running on the user's computer, such as Ollama or LM Studio. Packager injects `http://host.docker.internal:<port>` into the selected Compose service under the declared environment variable. The packaged app can therefore reach that one configured endpoint while its web UI remains bound to `127.0.0.1` and host networking stays disabled. Ordinary outbound HTTPS connections need no declaration and continue to use the runtime's normal internet connection.
+
+For Open Notebook, Packager supplies `OLLAMA_API_BASE=http://host.docker.internal:11434` automatically. A local Ollama server should therefore be configured as `http://host.docker.internal:11434` from inside Open Notebook; `localhost:11434` refers to the Open Notebook container itself. Ollama Cloud should be configured through Open Notebook's OpenAI-compatible provider with base URL `https://ollama.com/v1` and an Ollama API key.
 
 The machine-readable contract is in [`schemas/packager.schema.json`](schemas/packager.schema.json).
 

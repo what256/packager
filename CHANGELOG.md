@@ -10,10 +10,12 @@ This file records user-visible Packager milestones. Dates use UTC. The current r
 - `packager runtime uninstall` for deleting Packager's private VM, tools, and container storage.
 - A maintainer handbook and reusable security/dependency check command.
 - Real package logos in Library and Catalog, with upload, generated-icon, and restore-original controls for installed apps.
+- A package-level `host_services` contract that injects narrowly scoped host-service URLs without granting containers host networking.
 
 ### Fixed
 
 - Open Notebook now receives its dynamically allocated API address, preventing a blank or disconnected frontend when port 5055 is unavailable on the host.
+- Open Notebook now reaches a host-installed Ollama server through Packager's managed runtime instead of incorrectly treating the container's own `localhost` as the Mac or Windows host.
 - Reopening an existing packaged-app window navigates it back to the current app URL so it recovers after a container restart or package update.
 - Packaged-app launchers now use their package-specific macOS/Windows icons and refresh older bundled installations without deleting app data.
 - Opening a packaged app no longer runs duplicate start handlers or leaves Packager's main window visible; launcher errors reveal the main window only when user attention is required.

@@ -34,6 +34,21 @@
               "environment": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" }
             }
           }
+        },
+        "host_services": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "service", "port", "environment"],
+            "properties": {
+              "name": { "type": "string", "pattern": "^[a-z0-9]+(?:[-_][a-z0-9]+)*$" },
+              "service": { "type": "string", "pattern": "^[a-z0-9]+(?:[-_][a-z0-9]+)*$" },
+              "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+              "environment": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+              "protocol": { "enum": ["http", "https"] }
+            }
+          }
         }
       }
     },

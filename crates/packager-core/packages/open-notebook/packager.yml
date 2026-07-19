@@ -1,7 +1,7 @@
 schema_version: 1
 id: open-notebook
 name: Open Notebook
-version: 1.0.0
+version: 1.1.0
 description: A private, self-hosted research assistant for documents, notes, chat, and podcasts.
 category: Knowledge
 homepage: https://www.opennotebook.ai/
@@ -17,6 +17,11 @@ runtime:
     - name: api
       container_port: 5055
       environment: PACKAGER_API_PORT
+  host_services:
+    - name: ollama
+      service: open-notebook
+      port: 11434
+      environment: OLLAMA_API_BASE
 ui:
   port: web
   path: /
