@@ -701,6 +701,7 @@ pub fn build(engine: &Engine, request: BuilderRequest) -> Result<ActionResult, S
                 compose_file: "compose.yml".into(),
                 project_name: format!("packager-{}", request.id),
                 ports,
+                host_services: Vec::new(),
             },
             ui: UiRecipe {
                 url: None,

@@ -42,6 +42,8 @@ pub struct RuntimeRecipe {
     pub project_name: String,
     #[serde(default)]
     pub ports: Vec<PortRecipe>,
+    #[serde(default)]
+    pub host_services: Vec<HostServiceRecipe>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -50,6 +52,21 @@ pub struct PortRecipe {
     pub name: String,
     pub container_port: u16,
     pub environment: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct HostServiceRecipe {
+    pub name: String,
+    pub service: String,
+    pub port: u16,
+    pub environment: String,
+    #[serde(default = "default_host_service_protocol")]
+    pub protocol: String,
+}
+
+fn default_host_service_protocol() -> String {
+    "http".into()
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

@@ -17,6 +17,7 @@ Packager is a cross-platform alpha. The CLI is publicly distributed; desktop bui
 - Dedicated packaged-app launchers with package-specific identities and icons, hidden Packager startup UI, and one shared Library/data root
 - Builder icon discovery with a visual original-logo preview, image upload, initial-based icon creator, and portable macOS/Windows conversion
 - Package-logo rendering in Library and Catalog, plus installed-app upload/create/restore controls that regenerate the native launcher icon
+- Declarative host-service connections for packaged apps; the bundled Open Notebook package uses this to reach local Ollama without host networking
 
 ## Verification record
 

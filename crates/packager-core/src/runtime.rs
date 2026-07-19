@@ -127,6 +127,31 @@ pub(crate) fn validate_recipe(recipe: &PackageRecipe) -> Result<(), String> {
             return Err("Runtime ports must have unique safe names, valid container ports, and uppercase environment variables".into());
         }
     }
+    let mut host_service_names = std::collections::HashSet::new();
+    let mut host_service_environments = std::collections::HashSet::new();
+    for host_service in &recipe.runtime.host_services {
+        let safe_name = |value: &str| {
+            !value.is_empty()
+                && value.chars().all(|character| {
+                    character.is_ascii_lowercase()
+                        || character.is_ascii_digit()
+                        || matches!(character, '-' | '_')
+                })
+        };
+        if !safe_name(&host_service.name)
+            || !safe_name(&host_service.service)
+            || host_service.port == 0
+            || !valid_variable(&host_service.environment)
+            || !matches!(host_service.protocol.as_str(), "http" | "https")
+            || !host_service_names.insert(host_service.name.clone())
+            || !host_service_environments.insert((
+                host_service.service.clone(),
+                host_service.environment.clone(),
+            ))
+        {
+            return Err("Host services must have unique safe names and environment variables, valid ports, target services, and an http or https protocol".into());
+        }
+    }
     match (&recipe.ui.url, &recipe.ui.port) {
         (Some(raw_url), None) => {
             let app_url =
@@ -893,7 +918,11 @@ fn compose_output(instance: &Instance, arguments: &[&str]) -> Result<Output, Str
         .current_dir(&instance.definition_dir)
         .arg("compose")
         .arg("-f")
-        .arg(&compose_file)
+        .arg(&compose_file);
+    if let Some(override_file) = host_services_override(instance)? {
+        command.arg("-f").arg(override_file);
+    }
+    command
         .arg("--project-name")
         .arg(&instance.recipe.runtime.project_name)
         .args(arguments)
@@ -918,6 +947,42 @@ fn compose_output(instance: &Instance, arguments: &[&str]) -> Result<Output, Str
     command
         .output()
         .map_err(|error| format!("Cannot run Docker Compose: {error}"))
+}
+
+fn host_services_override(instance: &Instance) -> Result<Option<PathBuf>, String> {
+    if instance.recipe.runtime.host_services.is_empty() {
+        return Ok(None);
+    }
+
+    let key = |value: &str| serde_yaml::Value::String(value.into());
+    let mut services = serde_yaml::Mapping::new();
+    for host_service in &instance.recipe.runtime.host_services {
+        let service = services
+            .entry(key(&host_service.service))
+            .or_insert_with(|| serde_yaml::Value::Mapping(serde_yaml::Mapping::new()))
+            .as_mapping_mut()
+            .ok_or("Cannot generate host-service configuration")?;
+        let environment = service
+            .entry(key("environment"))
+            .or_insert_with(|| serde_yaml::Value::Mapping(serde_yaml::Mapping::new()))
+            .as_mapping_mut()
+            .ok_or("Cannot generate host-service environment")?;
+        environment.insert(
+            key(&host_service.environment),
+            key(&format!(
+                "{}://host.docker.internal:{}",
+                host_service.protocol, host_service.port
+            )),
+        );
+    }
+    let mut document = serde_yaml::Mapping::new();
+    document.insert(key("services"), serde_yaml::Value::Mapping(services));
+    let source = serde_yaml::to_string(&serde_yaml::Value::Mapping(document))
+        .map_err(|error| format!("Cannot generate host-service configuration: {error}"))?;
+    let path = instance.definition_dir.join(".packager-host-services.yml");
+    fs::write(&path, source)
+        .map_err(|error| format!("Cannot write host-service configuration: {error}"))?;
+    Ok(Some(path))
 }
 
 fn checked_compose(instance: &Instance, arguments: &[&str]) -> Result<String, String> {
@@ -1384,6 +1449,9 @@ mod tests {
         assert_eq!(recipe.runtime.kind, "compose");
         assert_eq!(recipe.ui.port.as_deref(), Some("web"));
         assert_eq!(recipe.runtime.ports.len(), 2);
+        assert_eq!(recipe.runtime.host_services.len(), 1);
+        assert_eq!(recipe.runtime.host_services[0].name, "ollama");
+        assert_eq!(recipe.runtime.host_services[0].port, 11434);
         assert_eq!(recipe.secrets[0].key, "OPEN_NOTEBOOK_ENCRYPTION_KEY");
         assert!(OPEN_NOTEBOOK_COMPOSE.contains(
             "API_URL: http://127.0.0.1:${PACKAGER_API_PORT:?PACKAGER_API_PORT is required}"
@@ -1392,6 +1460,40 @@ mod tests {
         fs::write(&compose, OPEN_NOTEBOOK_COMPOSE).expect("compose should be writable");
         validate_compose_security(&compose).expect("bundled compose should be safe");
         fs::remove_file(compose).expect("compose test file should be removable");
+    }
+
+    #[test]
+    fn host_service_override_injects_only_the_declared_endpoint() {
+        let root = std::env::temp_dir().join(format!("packager-host-service-{}", Uuid::new_v4()));
+        let definition_dir = root.join("definition");
+        fs::create_dir_all(&definition_dir).expect("definition directory should be created");
+        let recipe = parse_recipe(OPEN_NOTEBOOK_RECIPE).expect("recipe should parse");
+        let instance = Instance {
+            engine: Engine::new(root.join("engine"), root.join("cache"))
+                .expect("engine should be created"),
+            recipe,
+            state: InstalledState {
+                installed_version: "1.1.0".into(),
+                installed_at: 0,
+                automatic_updates: true,
+                last_update_check: None,
+                environment: HashMap::new(),
+                ports: HashMap::new(),
+                secret_keys: Vec::new(),
+            },
+            definition_dir,
+            data_dir: root.join("data"),
+        };
+
+        let path = host_services_override(&instance)
+            .expect("override should render")
+            .expect("override should exist");
+        let source = fs::read_to_string(path).expect("override should be readable");
+        assert!(source.contains("open-notebook:"));
+        assert!(source.contains("OLLAMA_API_BASE: http://host.docker.internal:11434"));
+        assert!(!source.contains("network_mode"));
+
+        fs::remove_dir_all(root).expect("test directory should be removable");
     }
 
     #[test]
