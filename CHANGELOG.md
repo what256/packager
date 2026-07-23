@@ -11,6 +11,8 @@ This file records user-visible Packager milestones. Dates use UTC. The current r
 - A maintainer handbook and reusable security/dependency check command.
 - Real package logos in Library and Catalog, with upload, generated-icon, and restore-original controls for installed apps.
 - A package-level `host_services` contract that injects narrowly scoped host-service URLs without granting containers host networking.
+- Public privacy and code-signing policies that prepare Packager for an
+  open-source Windows Authenticode signing application.
 
 ### Fixed
 

@@ -9,3 +9,8 @@ Imported recipes are untrusted. Packager validates paths and blocks privileged c
 Only the bundled Open Notebook recipe is first-party. A signed community catalog and stronger per-package VM isolation remain candidates for a stable release.
 
 Maintainers run the lockfile and account-security checks documented in [`docs/MAINTAINER_GUIDE.md`](docs/MAINTAINER_GUIDE.md). Never include credentials, private keys, recovery codes, or exploit details in a public report or repository artifact.
+
+Official production signing requests follow the named roles, manual approval,
+build-integrity, and incident-response rules in
+[`docs/CODE_SIGNING_POLICY.md`](docs/CODE_SIGNING_POLICY.md). The application's
+documented network behavior is in [`PRIVACY.md`](PRIVACY.md).

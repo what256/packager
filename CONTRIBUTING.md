@@ -16,6 +16,10 @@ Changes to the macOS managed runtime should run `scripts/macos-runtime-smoke.sh`
 
 Maintainers should follow the security, dependency, release, and incident procedures in [`docs/MAINTAINER_GUIDE.md`](docs/MAINTAINER_GUIDE.md). User-visible changes belong in [`CHANGELOG.md`](CHANGELOG.md).
 
+Production signing is a separate, manually approved release step. Contributors
+cannot request or receive signing credentials. Reviewers and approvers follow
+the public [`docs/CODE_SIGNING_POLICY.md`](docs/CODE_SIGNING_POLICY.md).
+
 ## Adding a catalog package
 
 - Use official upstream images.

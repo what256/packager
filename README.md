@@ -6,7 +6,7 @@ The desktop application and headless CLI are two clients of the same Rust engine
 
 > Status: cross-platform alpha. macOS has a repeatable real-workload runtime gate. Windows x64 and ARM64 pass the full workspace checks, real managed-tool installation smoke tests, and a native CLI lifecycle contract covering WSL detection plus machine create/start/status/stop/restart. Starting an actual WSL2 machine and running a real packaged workload still need end-to-end validation on Windows hardware before the first stable release.
 
-Project records: [current status](docs/STATUS.md) · [maintainer guide](docs/MAINTAINER_GUIDE.md) · [release history](CHANGELOG.md) · [security policy](SECURITY.md)
+Project records: [current status](docs/STATUS.md) · [maintainer guide](docs/MAINTAINER_GUIDE.md) · [release history](CHANGELOG.md) · [security policy](SECURITY.md) · [privacy policy](PRIVACY.md) · [code-signing policy](docs/CODE_SIGNING_POLICY.md)
 
 ## Install Packager
 
@@ -19,6 +19,12 @@ Download the permanent [Packager 0.1.0 Development Preview](https://github.com/w
 For a newer source revision, maintainers can run the [Preview artifacts workflow](https://github.com/what256/packager/actions/workflows/preview.yml) without Apple, Windows, or npm credentials. Workflow artifacts expire after 14 days; verified builds can be promoted to a permanent GitHub prerelease.
 
 Preview desktop artifacts include `PREVIEW-NOTICE.txt`. macOS builds are completely ad-hoc signed but not Developer ID signed or Apple-notarized; Windows builds are not Authenticode signed. Gatekeeper and SmartScreen warnings are therefore expected. Preview releases are excluded from the stable automatic-update channel and do not replace the signed release process below.
+
+Packager is applying to the SignPath Foundation open-source program for future
+Windows Authenticode signatures. See the public
+[code-signing policy](docs/CODE_SIGNING_POLICY.md) for release roles, build
+integrity, and the exact scope. Approval has not yet been granted, so current
+preview artifacts remain unsigned.
 
 The npm tarballs are not published to the npm registry. Download the launcher and the one native package matching your computer, then install both local files together. For example:
 
@@ -252,6 +258,12 @@ Those updater keys do not sign the DMG, Windows installer, or npm package. Publi
 | `WINDOWS_CERTIFICATE`, `WINDOWS_CERTIFICATE_PASSWORD` | Authenticode signing for Windows executables/MSI/NSIS |
 | `GITHUB_TOKEN` | Create the draft release and upload assets; supplied by GitHub Actions |
 
+The planned SignPath Foundation workflow will replace the two
+`WINDOWS_CERTIFICATE*` repository secrets after the open-source application is
+approved. It does not replace the Tauri updater key or Apple's Developer ID
+requirements. Details are in the
+[code-signing policy](docs/CODE_SIGNING_POLICY.md).
+
 Packager users do not need any publishing secret. Package application secrets are generated locally and live in the operating-system credential vault.
 
 The first registry publication used a temporary bootstrap token. That token is no longer stored in GitHub. All five npm packages trust GitHub user `what256`, repository `packager`, workflow `publish-npm.yml`, and the `npm publish` action through OIDC. Packager 0.1.1 was published through that token-free path with verified registry signatures and SLSA provenance, then installed and executed on native macOS and Windows ARM64/x64 runners. The dedicated workflow can publish the CLI independently of desktop signing and also runs automatically when a stable GitHub release is published. Credential-free preview tarballs remain available through GitHub Releases. The Windows certificate may be added later without changing the application or CLI architecture.
@@ -324,4 +336,6 @@ npm shim ────┘           │
                               app data + loopback UI
 ```
 
-Packager is MIT licensed. See [`LICENSE`](LICENSE), [`CONTRIBUTING.md`](CONTRIBUTING.md), and [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+Packager is MIT licensed. See [`LICENSE`](LICENSE), [`PRIVACY.md`](PRIVACY.md),
+[`CONTRIBUTING.md`](CONTRIBUTING.md), and
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
